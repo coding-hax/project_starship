@@ -1,6 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
-import { openMeteoForecastBody, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
+import { openMeteoForecastBody, registerPasskey, resetAppData, skewClock } from './helpers';
 
 /**
  * Dritte Desktop-Stufe (issue #1120, Nachfolger von #1020/ADR-0029): ab 1440px
@@ -38,27 +37,6 @@ async function seedEvent(page: Page, payload: Record<string, unknown>): Promise<
   );
 }
 
-/** Trimmed one-off of aktivitaeten.spec.ts's insertGarminActivity — genug,
- * damit ActivityMonthStrip aus seinem "noch nie eine Aktivität" `return null`
- * (issue #180) heraustritt. Läuft vor der ersten Navigation, damit der erste
- * Sync-Pull der Seite die Zeile schon mitbringt (wie aktivitaeten.spec.ts). */
-async function insertActivity(): Promise<void> {
-  const track = { n: 3, hr: [140, 150, 145], speed: [2.6, 2.9, 2.7], elevation: [60, 65, 61] };
-  await withDb((client) =>
-    client.query(
-      `INSERT INTO garmin_activities
-        (id, updated_at, deleted_at, synced_at, sync_seq, garmin_activity_id, activity_type, name,
-         started_at, distance_meters, duration_seconds, elapsed_seconds, elevation_gain, elevation_loss,
-         average_hr, max_hr, average_speed, calories, track, map_image, fetched_at)
-       VALUES
-        ($1, now(), NULL, now(), nextval('sync_seq'), $2, 'running', 'Breite-Lauf',
-         '2026-07-20T06:30:00Z', 5000, 1750, 1810, 120, 118,
-         150, 178, 2.8, 400, $3, NULL, now())`,
-      [randomUUID(), Math.floor(Math.random() * 1_000_000_000), JSON.stringify(track)],
-    ),
-  );
-}
-
 /** Wartet auf denselben gemeinsamen Enthüllungspunkt (issue #642) wie die
  * anderen /uebersicht-Specs — vorher stehen die Sektionen zwar im Layout,
  * sind aber `visibility: hidden`, und Geometrie-Messungen wären verfrüht. */
@@ -82,7 +60,6 @@ test.beforeEach(async ({ page }) => {
 test('AK1: jede Sektion trägt ihr Modul als data-section auf .overview-block (issue #1120)', async ({
   page,
 }) => {
-  await insertActivity();
   await registerPasskey(page, '/uebersicht');
   await skewClock(page, NOW);
   await seedTask(page, { title: 'Aufgabe', dueAt: NOW });
@@ -97,9 +74,8 @@ test('AK1: jede Sektion trägt ihr Modul als data-section auf .overview-block (i
   });
 
   await waitForReveal(page);
-  await expect(page.locator('.overview-block[data-section="aktivitaeten"]')).toBeVisible();
 
-  for (const id of ['wetter', 'kalender', 'aufgaben', 'aktivitaeten', 'routinen']) {
+  for (const id of ['wetter', 'kalender', 'aufgaben', 'routinen']) {
     await expect(
       page.locator(`.uebersicht__sections > .overview-block[data-section="${id}"]`),
       `Sektion ${id} trägt ihr data-section`,
@@ -110,7 +86,6 @@ test('AK1: jede Sektion trägt ihr Modul als data-section auf .overview-block (i
 test('AK2/AK3: ab 1440px ist .uebersicht__sections ein dreispaltiges Raster, Wetter und Termine überspannen alle drei Spalten, die übrigen Sektionen stehen in der Zeile darunter, oben ausgerichtet (issue #1120)', async ({
   page,
 }) => {
-  await insertActivity();
   await registerPasskey(page, '/uebersicht');
   await skewClock(page, NOW);
   await seedTask(page, { title: 'Aufgabe', dueAt: NOW });
@@ -125,7 +100,6 @@ test('AK2/AK3: ab 1440px ist .uebersicht__sections ein dreispaltiges Raster, Wet
   });
 
   await waitForReveal(page);
-  await expect(page.locator('.overview-block[data-section="aktivitaeten"]')).toBeVisible();
 
   const sections = page.locator('.uebersicht__sections');
   const [display, templateColumns] = await sections.evaluate((el) => {
@@ -152,45 +126,45 @@ test('AK2/AK3: ab 1440px ist .uebersicht__sections ein dreispaltiges Raster, Wet
   expect(kalenderBox!.y).toBeGreaterThanOrEqual(wetterBox!.y + wetterBox!.height - 1);
 
   const aufgabenBox = await page.locator('.overview-block[data-section="aufgaben"]').boundingBox();
-  const aktivBox = await page.locator('.overview-block[data-section="aktivitaeten"]').boundingBox();
   const routinenBox = await page.locator('.overview-block[data-section="routinen"]').boundingBox();
 
   // AK3: dieselbe Zeile — oben ausgerichtet, unabhängig von der Eigenhöhe jeder Karte.
-  expect(Math.round(aufgabenBox!.y)).toBe(Math.round(aktivBox!.y));
   expect(Math.round(aufgabenBox!.y)).toBe(Math.round(routinenBox!.y));
   // … unterhalb der Termine-Zeile.
   expect(aufgabenBox!.y).toBeGreaterThanOrEqual(kalenderBox!.y + kalenderBox!.height - 1);
-  // AK3: drei eigene Spalten, in der DOM-Reihenfolge aus uebersicht-sections.tsx.
-  expect(aufgabenBox!.x).toBeLessThan(aktivBox!.x);
-  expect(aktivBox!.x).toBeLessThan(routinenBox!.x);
+  // AK3: eigene Spalten, in der DOM-Reihenfolge aus uebersicht-sections.tsx.
+  expect(aufgabenBox!.x).toBeLessThan(routinenBox!.x);
 });
 
 test('AK4: ein abgeschaltetes Modul lässt das Raster ohne Lücke, die verbliebenen Sektionen rücken auf (issue #1120)', async ({
   page,
 }) => {
+  // Aufgaben aus, nicht Routinen: `waitForReveal` wartet auf `.habit-today`, also
+  // genau auf die Routinen-Sektion — die abzuschalten nähme dem Test seinen
+  // Enthüllungspunkt. Bis #1200 stand hier Aktivitäten, das weder spannt noch
+  // der Warte-Anker ist.
   await page.addInitScript(
     ({ key, value }) => localStorage.setItem(key, value),
-    { key: MODULES_OFF_KEY, value: JSON.stringify(['aktivitaeten']) },
+    { key: MODULES_OFF_KEY, value: JSON.stringify(['aufgaben']) },
   );
   await registerPasskey(page, '/uebersicht');
   await skewClock(page, NOW);
-  await seedTask(page, { title: 'Aufgabe', dueAt: NOW });
 
   await waitForReveal(page);
-  await expect(page.locator('.overview-block[data-section="aktivitaeten"]')).toHaveCount(0);
+  await expect(page.locator('.overview-block[data-section="aufgaben"]')).toHaveCount(0);
 
   const sections = page.locator('.uebersicht__sections');
   const gapPx = await sections.evaluate((el) => parseFloat(getComputedStyle(el).columnGap));
   const containerBox = await sections.boundingBox();
-  const aufgabenBox = await page.locator('.overview-block[data-section="aufgaben"]').boundingBox();
   const routinenBox = await page.locator('.overview-block[data-section="routinen"]').boundingBox();
+  const kalenderBox = await page.locator('.overview-block[data-section="kalender"]').boundingBox();
 
-  // Aufgaben rückt in die erste Spalte …
-  expect(Math.round(aufgabenBox!.x)).toBe(Math.round(containerBox!.x));
-  // … Routinen direkt in die zweite, ohne die freigewordene dritte Spalte
-  // dazwischen leer zu lassen (keine Lücke).
-  expect(Math.round(routinenBox!.x)).toBe(Math.round(aufgabenBox!.x + aufgabenBox!.width + gapPx));
-  expect(Math.round(routinenBox!.y)).toBe(Math.round(aufgabenBox!.y));
+  // Routinen rückt in die erste Spalte, direkt unter die spannenden Sektionen …
+  expect(Math.round(routinenBox!.x)).toBe(Math.round(containerBox!.x));
+  // … und lässt keine leere Spalte vor sich stehen: die Zeile beginnt links,
+  // nicht erst dort, wo Aufgaben vorher saß.
+  expect(routinenBox!.y).toBeGreaterThanOrEqual(kalenderBox!.y + kalenderBox!.height - 1);
+  expect(gapPx, 'Raster-Spaltenabstand steht').toBeGreaterThan(0);
 });
 
 test('AK6: bei Viewport 1800 ragt keine Sektion in den schwebenden Erfassen-Knopf hinein — die Bodenreserve rechnet gegen die Desktop-Fab-Position (issue #1120)', async ({

@@ -16,15 +16,9 @@ import { registerPasskey, resetAppData } from './helpers';
 test.describe.configure({ timeout: 120_000 });
 
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
-const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
-  await page.route(GARMIN_SYNC_PATTERN, (route) =>
-    route.fulfill({
-      json: { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 },
-    }),
-  );
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
       json: {
@@ -61,7 +55,6 @@ const ROUTES: RouteCase[] = [
   { ground: 'kalender', path: '/kalender' },
   { ground: 'routinen', path: '/routinen' },
   { ground: 'journal', path: '/journal' },
-  { ground: 'aktivitaeten', path: '/aktivitaeten' },
   { ground: 'wetter', path: '/wetter/2026-07-18' },
   { ground: 'einstellungen', path: '/einstellungen' },
 ];

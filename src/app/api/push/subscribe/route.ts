@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { uuidv7 } from 'uuidv7';
-import { requireOwner, UnauthorizedError } from '@/auth/session';
+import { authErrorResponse } from '@/auth/auth-response';
+import { requireUser } from '@/auth/session';
 import { db } from '@/db';
 import { pushSubscriptions } from '@/db/schema';
 
@@ -10,12 +11,12 @@ import { pushSubscriptions } from '@/db/schema';
  * idempotent rather than accumulate duplicate rows.
  */
 export async function POST(request: Request) {
+  let user;
   try {
-    await requireOwner();
+    user = await requireUser();
   } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const response = authErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 
@@ -31,9 +32,12 @@ export async function POST(request: Request) {
 
   await db
     .insert(pushSubscriptions)
-    .values({ id: uuidv7(), endpoint, p256dh, auth, userAgent })
+    .values({ id: uuidv7(), userId: user.userId, endpoint, p256dh, auth, userAgent })
     .onConflictDoUpdate({
-      target: pushSubscriptions.endpoint,
+      // On `(user_id, endpoint)`, not on the endpoint alone: a browser shared by
+      // two accounts hands back the same endpoint, and each account keeps its
+      // own row instead of one stealing the other's (ADR-0031).
+      target: [pushSubscriptions.userId, pushSubscriptions.endpoint],
       set: { p256dh, auth, userAgent, lastUsedAt: new Date() },
     });
 

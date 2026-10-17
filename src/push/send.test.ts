@@ -20,12 +20,15 @@ const deleteWhere = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@/db', () => ({
   db: {
-    select: () => ({ from: () => Promise.resolve(subscriptions) }),
+    select: () => ({ from: () => ({ where: () => Promise.resolve(subscriptions) }) }),
     delete: () => ({ where: deleteWhere }),
   },
 }));
 
-describe('sendPushToAll', () => {
+/** The account whose devices this suite sends to — `sendPushToUser` takes it since #1200. */
+const USER_ID = '00000000-0000-0000-0000-00000000a003';
+
+describe('sendPushToUser', () => {
   beforeEach(() => {
     sendNotification.mockReset();
     deleteWhere.mockClear();
@@ -35,8 +38,8 @@ describe('sendPushToAll', () => {
     subscriptions = [{ id: 'sub-1', endpoint: 'https://push.example/gone', p256dh: 'p', auth: 'a' }];
     sendNotification.mockRejectedValue(new FakeWebPushError('gone', 410));
 
-    const { sendPushToAll } = await import('./send');
-    await sendPushToAll({ title: 't', body: 'b', url: '/' });
+    const { sendPushToUser } = await import('./send');
+    await sendPushToUser(USER_ID, { title: 't', body: 'b', url: '/' });
 
     expect(deleteWhere).toHaveBeenCalledTimes(1);
   });
@@ -45,8 +48,8 @@ describe('sendPushToAll', () => {
     subscriptions = [{ id: 'sub-1', endpoint: 'https://push.example/missing', p256dh: 'p', auth: 'a' }];
     sendNotification.mockRejectedValue(new FakeWebPushError('missing', 404));
 
-    const { sendPushToAll } = await import('./send');
-    await sendPushToAll({ title: 't', body: 'b', url: '/' });
+    const { sendPushToUser } = await import('./send');
+    await sendPushToUser(USER_ID, { title: 't', body: 'b', url: '/' });
 
     expect(deleteWhere).toHaveBeenCalledTimes(1);
   });
@@ -58,8 +61,8 @@ describe('sendPushToAll', () => {
     sendNotification.mockRejectedValue(new Error('ECONNRESET'));
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const { sendPushToAll } = await import('./send');
-    await sendPushToAll({ title: 't', body: 'b', url: '/' });
+    const { sendPushToUser } = await import('./send');
+    await sendPushToUser(USER_ID, { title: 't', body: 'b', url: '/' });
 
     expect(deleteWhere).not.toHaveBeenCalled();
     expect(errorSpy).toHaveBeenCalledWith('Push delivery failed', {
@@ -77,8 +80,8 @@ describe('sendPushToAll', () => {
     sendNotification.mockResolvedValue(undefined);
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const { sendPushToAll } = await import('./send');
-    await sendPushToAll({ title: 't', body: 'b', url: '/' });
+    const { sendPushToUser } = await import('./send');
+    await sendPushToUser(USER_ID, { title: 't', body: 'b', url: '/' });
 
     expect(sendNotification).toHaveBeenCalledTimes(2);
     expect(errorSpy).not.toHaveBeenCalled();

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireOwner, UnauthorizedError } from '@/auth/session';
+import { authErrorResponse } from '@/auth/auth-response';
+import { requireUser } from '@/auth/session';
 import { db } from '@/db';
 import { pageChanges, PULL_PAGE_LIMIT } from '@/local/conflict';
 import type { PullResponse } from '@/local/types';
@@ -19,12 +20,12 @@ import { readChangesSince } from './read-changes-since';
  * skipped or re-fetched forever.
  */
 export async function GET(request: Request) {
+  let user;
   try {
-    await requireOwner();
+    user = await requireUser();
   } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const response = authErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 
@@ -34,10 +35,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'since must be an integer sequence number' }, { status: 400 });
   }
 
-  const { changes, truncated } = await db.transaction((tx) => readChangesSince(tx, since), {
-    isolationLevel: 'repeatable read',
-    accessMode: 'read only',
-  });
+  const { changes, truncated } = await db.transaction(
+    (tx) => readChangesSince(tx, since, user.userId),
+    { isolationLevel: 'repeatable read', accessMode: 'read only' },
+  );
 
   const { changes: page, cursor, hasMore } = pageChanges(changes, since, PULL_PAGE_LIMIT, truncated);
   const response: PullResponse = { changes: page, cursor, hasMore };

@@ -1,4 +1,4 @@
-import { and, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { habitLogs, habits, type Habit, type HabitLog } from '@/db/schema';
 import { addDaysToKey, isTargetMet, periodRangeFor, type WeekRange } from '@/features/habits/schedule-rules';
@@ -80,15 +80,18 @@ export function selectOpenHabits(candidates: Habit[], logs: HabitLog[], dateKey:
     }));
 }
 
-export async function build(now: Date): Promise<PushPayload | null> {
+export async function build(now: Date, userId: string): Promise<PushPayload | null> {
   const activeHabits = await db
     .select()
     .from(habits)
-    .where(and(isNull(habits.archivedAt), isNull(habits.deletedAt)));
+    .where(and(eq(habits.userId, userId), isNull(habits.archivedAt), isNull(habits.deletedAt)));
 
   if (activeHabits.length === 0) return null;
 
-  const logs = await db.select().from(habitLogs).where(isNull(habitLogs.deletedAt));
+  const logs = await db
+    .select()
+    .from(habitLogs)
+    .where(and(eq(habitLogs.userId, userId), isNull(habitLogs.deletedAt)));
 
   const { dateKey } = berlinNow(now);
   const open = selectOpenHabits(activeHabits, logs, dateKey);

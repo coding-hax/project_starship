@@ -28,7 +28,7 @@ function readOrder(): string[] {
 /**
  * Known ids in their stored order, unknown ids dropped, ids missing from `stored`
  * appended at the end in `items`' own order — so a nav entry added later (#180's
- * Garmin tab) shows up instead of vanishing, and a stale id left over from a removed
+ * tab) shows up instead of vanishing, and a stale id left over from a removed
  * entry never produces a gap.
  */
 export function resolveOrder<T extends { id: string }>(stored: string[], items: readonly T[]): T[] {

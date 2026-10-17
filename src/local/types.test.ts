@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  isReadOnlyTable,
   isSyncTable,
   malformedFields,
   NATURAL_KEYS,
   naturalKeyOf,
+  READ_ONLY_TABLES,
   SYNC_TABLES,
   type Mutation,
 } from './types';
@@ -42,32 +42,26 @@ describe('malformedFields', () => {
   });
 });
 
-describe('garmin (ADR-0011)', () => {
-  it('garmin_activities is a sync table — it goes through the normal pull', () => {
-    expect(isSyncTable('garmin_activities')).toBe(true);
-    expect(SYNC_TABLES).toContain('garmin_activities');
-  });
-
-  it('garmin_activities is read-only, every other sync table is not', () => {
-    expect(isReadOnlyTable('garmin_activities')).toBe(true);
-    for (const table of SYNC_TABLES) {
-      if (table === 'garmin_activities') continue;
-      expect(isReadOnlyTable(table)).toBe(false);
-    }
+describe('Garmin ist ausgebaut (#1200, löst ADR-0011 ab)', () => {
+  it('garmin_activities is not a sync table any more', () => {
+    expect(isSyncTable('garmin_activities')).toBe(false);
+    expect(SYNC_TABLES).not.toContain('garmin_activities');
   });
 
   it('garmin_tokens never appears in SYNC_TABLES — tokens never leave the server through sync', () => {
     expect(isSyncTable('garmin_tokens')).toBe(false);
     expect(SYNC_TABLES).not.toContain('garmin_tokens');
   });
+
+  it('READ_ONLY_TABLES is empty — garmin_activities was the only entry (AC2)', () => {
+    expect(READ_ONLY_TABLES).toEqual([]);
+  });
 });
 
 describe('events/event_exceptions (issue #552, S1 of #473)', () => {
-  it('both are sync tables, neither is read-only', () => {
+  it('both are sync tables', () => {
     expect(isSyncTable('events')).toBe(true);
     expect(isSyncTable('event_exceptions')).toBe(true);
-    expect(isReadOnlyTable('events')).toBe(false);
-    expect(isReadOnlyTable('event_exceptions')).toBe(false);
   });
 
   it('event_exceptions has the natural key (eventId, originalDate) — a series referenced, not a list on events (AC6)', () => {
@@ -87,9 +81,8 @@ describe('events/event_exceptions (issue #552, S1 of #473)', () => {
 });
 
 describe('category_colors (issue #660)', () => {
-  it('is a sync table, not read-only', () => {
+  it('is a sync table', () => {
     expect(isSyncTable('category_colors')).toBe(true);
-    expect(isReadOnlyTable('category_colors')).toBe(false);
   });
 
   it('has the natural key (category) — two devices choosing offline collapse to one row', () => {

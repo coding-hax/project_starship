@@ -1,19 +1,20 @@
 import { NextResponse } from 'next/server';
-import { currentCredentialId, requireOwner, UnauthorizedError } from '@/auth/session';
+import { authErrorResponse } from '@/auth/auth-response';
+import { currentCredentialId, requireUser } from '@/auth/session';
 import { listCredentialsForDisplay } from '@/auth/webauthn';
 
 export async function GET() {
+  let user;
   try {
-    await requireOwner();
+    user = await requireUser();
   } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const response = authErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 
   const [credentials, current] = await Promise.all([
-    listCredentialsForDisplay(),
+    listCredentialsForDisplay(user.userId),
     currentCredentialId(),
   ]);
   return NextResponse.json({

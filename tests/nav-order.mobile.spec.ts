@@ -42,12 +42,13 @@ async function trackScrollTo(page: Page) {
 }
 
 /**
- * #180 added a real 6th entry (Aktivitäten), so the bottom nav overflows five slots
- * by default now. One test still needs the pre-#180 no-overflow baseline to prove
- * the "nothing to do, nothing happens" case. Removing a `.nav__item` node directly
- * does not survive it — a client-side navigation re-renders `Nav` from the same
- * (unchanged) `NAV_ITEMS`/`useNavOrder` state and the removed node comes right
- * back, overflow and all.
+ * Since #1200 removed the Aktivitäten module the bottom nav is back to five entries
+ * in five slots, i.e. it does not overflow on its own — `forceOverflow` widens the
+ * slots so the carousel is exercised at all, `forceNoOverflow` keeps the opposite
+ * baseline for the "nothing to do, nothing happens" case. Removing or adding a
+ * `.nav__item` node directly does not survive a navigation — a client-side
+ * navigation re-renders `Nav` from the same (unchanged) `NAV_ITEMS`/`useNavOrder`
+ * state and the DOM edit is gone.
  *
  * Must be an init script, not `page.addStyleTag` -- the caller still needs a fresh
  * full navigation afterwards (to arm `trackScrollIntoView`'s prototype patch for
@@ -78,29 +79,54 @@ async function forceNoOverflow(page: Page) {
   });
 }
 
+/**
+ * The inverse of `forceNoOverflow`: five entries in five 20%-slots fit exactly, so
+ * the carousel below needs the slots widened past a fifth of the bar to have
+ * anything to scroll. Same init-script mechanics and the same `document.head`
+ * caveat — see above.
+ */
+async function forceOverflow(page: Page) {
+  await page.addInitScript(() => {
+    const install = () => {
+      if (!document.head) {
+        requestAnimationFrame(install);
+        return;
+      }
+      const style = document.createElement('style');
+      style.textContent = '.nav__item { flex-basis: 25% !important; }';
+      document.head.appendChild(style);
+    };
+    install();
+  });
+}
+
 test.beforeEach(async ({ page }) => {
   await registerPasskey(page);
 });
 
 test.describe('Karussell bei mehr Einträgen als Plätzen (issue #205 AC1)', () => {
-  test('mehr als fünf Einträge schrumpfen die Plätze nicht, sondern scrollen darüber hinaus', async ({
+  test('mehr Einträge als Plätze schrumpfen die Plätze nicht, sondern scrollen darüber hinaus', async ({
     page,
   }) => {
+    await forceOverflow(page);
+    await page.goto('/uebersicht');
     const list = page.locator('.nav__list');
     const clientWidth = await list.evaluate((el) => el.clientWidth);
     const itemWidth = await list
       .locator('.nav__item')
       .first()
       .evaluate((el) => el.getBoundingClientRect().width);
-    // Five slots stay the visible amount regardless of how many entries exist — a
-    // sixth entry scrolls past them instead of shrinking all six to fit.
-    expect(itemWidth * 5).toBeCloseTo(clientWidth, 0);
+    // A slot keeps its width regardless of how many entries exist — an entry past
+    // the visible run scrolls instead of shrinking all of them to fit.
+    expect(itemWidth * 4).toBeCloseTo(clientWidth, 0);
     expect(await list.evaluate((el) => el.scrollWidth)).toBeGreaterThan(clientWidth + 1);
   });
 
   test('jeder Eintrag rastet bündig ein statt am Rand abgeschnitten zu bleiben', async ({
     page,
   }) => {
+    await forceOverflow(page);
+    await page.goto('/uebersicht');
     const list = page.locator('.nav__list');
     const itemWidth = await list
       .locator('.nav__item')
@@ -142,7 +168,8 @@ test.describe('Karussell rastet an den Rändern bündig ein (issue #229)', () =>
   test('AC1: den letzten Eintrag antippen füllt fünf Plätze, kein leerer Rand rechts', async ({
     page,
   }) => {
-    await registerPasskey(page);
+    await forceOverflow(page);
+    await page.goto('/uebersicht');
     const list = page.locator('.nav__list');
 
     // Swipe the carousel to its end so the last entry is the one being tapped —
@@ -150,9 +177,9 @@ test.describe('Karussell rastet an den Rändern bündig ein (issue #229)', () =>
     await list.evaluate((el) => el.scrollTo({ left: el.scrollWidth, behavior: 'auto' }));
     await page
       .getByRole('navigation', { name: 'Hauptnavigation' })
-      .getByRole('link', { name: 'Aktivitäten' })
+      .getByRole('link', { name: 'Journal' })
       .click();
-    await expect(page).toHaveURL(/\/aktivitaeten$/);
+    await expect(page).toHaveURL(/\/journal$/);
 
     const maxScrollLeft = await list.evaluate((el) => el.scrollWidth - el.clientWidth);
     await expect
@@ -167,7 +194,8 @@ test.describe('Karussell rastet an den Rändern bündig ein (issue #229)', () =>
   test('AC2: den ersten Eintrag von der Endposition aus antippen landet exakt bei scrollLeft 0', async ({
     page,
   }) => {
-    await registerPasskey(page);
+    await forceOverflow(page);
+    await page.goto('/uebersicht');
     const list = page.locator('.nav__list');
 
     await list.evaluate((el) => el.scrollTo({ left: el.scrollWidth, behavior: 'auto' }));
@@ -187,15 +215,16 @@ test.describe('Karussell rastet an den Rändern bündig ein (issue #229)', () =>
   test('AC3: der horizontale Dokument-Scroll bleibt unverändert, die Leiste verschiebt sich nicht', async ({
     page,
   }) => {
-    await registerPasskey(page);
+    await forceOverflow(page);
+    await page.goto('/uebersicht');
     const list = page.locator('.nav__list');
 
     await list.evaluate((el) => el.scrollTo({ left: el.scrollWidth, behavior: 'auto' }));
     await page
       .getByRole('navigation', { name: 'Hauptnavigation' })
-      .getByRole('link', { name: 'Aktivitäten' })
+      .getByRole('link', { name: 'Journal' })
       .click();
-    await expect(page).toHaveURL(/\/aktivitaeten$/);
+    await expect(page).toHaveURL(/\/journal$/);
 
     await expect
       .poll(async () => page.evaluate(() => document.scrollingElement?.scrollLeft ?? 0))
@@ -261,6 +290,10 @@ test.describe('reduzierte Bewegung (issue #205 AC6, Regression issue #229 AC5)',
     page,
   }) => {
     await trackScrollTo(page);
+    // Ohne erzwungenen Überlauf gibt es seit #1200 nichts zu scrollen — fünf
+    // Einträge passen in fünf Plätze, `scrollIntoView` feuert nie, und der Test
+    // prüfte am Ende nur noch, dass nichts passiert.
+    await forceOverflow(page);
     await registerPasskey(page);
 
     await page

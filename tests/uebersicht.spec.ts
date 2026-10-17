@@ -638,10 +638,8 @@ test('die verbleibenden Übersichts-Sektionen behalten ihre Reihenfolge Wetter �
 }) => {
   await page.goto('/uebersicht');
 
-  // Der Aktivitäten-Streifen zwischen Aufgaben und Routinen erscheint nur mit
-  // gesyncten Garmin-Daten (er rendert sonst nichts) — sein Platz in der Reihenfolge
-  // ist in aktivitaeten.spec.ts abgedeckt. Hier zählen die drei Sektionen, die auf
-  // /uebersicht immer stehen; entscheidend für #506 ist, dass die Journal-Kachel aus
+  // Hier zählen die drei Sektionen, die auf /uebersicht immer stehen;
+  // entscheidend für #506 ist, dass die Journal-Kachel aus
   // ihrer Mitte verschwindet, ohne die übrige Reihenfolge zu verschieben.
   const wetter = page.locator('.weather-forecast');
   const aufgaben = aufgabenContent(page);
@@ -1906,7 +1904,7 @@ test('AK1 (issue #1054): ganz nach unten gescrollt endet der Inhalt dort, wo der
   }
 
   // Letzte Sektion ist die Routinen-Karte (Wetter → Termine → Aufgaben →
-  // Aktivitäten → Routinen, docs/CODEMAP.md) — dieselbe, die im Ticket-
+  // Routinen, docs/codemap/app.md) — dieselbe, die im Ticket-
   // Screenshot den Rest unter sich stehen hat.
   const lastBlock = page.locator('.overview-block').last();
   await expect(lastBlock).toBeVisible();
@@ -1944,7 +1942,6 @@ for (const path of [
   '/aufgaben',
   '/kalender',
   '/journal',
-  '/aktivitaeten',
   '/routinen',
 ]) {
   test(`AC6 (issue #651): ${path} bekommt keinen horizontalen Überlauf bei 375px`, async ({

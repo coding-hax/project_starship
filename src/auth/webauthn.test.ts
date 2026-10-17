@@ -29,17 +29,23 @@ beforeEach(() => {
 });
 
 describe('verifyRecoveryCode', () => {
-  it('resolves to the matching row id without touching usedAt', async () => {
+  it('resolves to the matching row and the account it belongs to, without touching usedAt', async () => {
     const code = 'AAAA-BBBB-CCCC';
-    select.mockResolvedValue([{ id: 'row-1', codeHash: hash(code), usedAt: null }]);
+    // The account travels with the code since #1200: a recovery code is
+    // presented without a session, so it has to carry the identity itself.
+    select.mockResolvedValue([
+      { id: 'row-1', userId: 'user-1', codeHash: hash(code), usedAt: null },
+    ]);
 
     const { verifyRecoveryCode } = await import('./webauthn');
-    await expect(verifyRecoveryCode(code)).resolves.toBe('row-1');
+    await expect(verifyRecoveryCode(code)).resolves.toEqual({ id: 'row-1', userId: 'user-1' });
     expect(update).not.toHaveBeenCalled();
   });
 
   it('resolves to null when no unused code matches', async () => {
-    select.mockResolvedValue([{ id: 'row-1', codeHash: hash('OTHER-CODE'), usedAt: null }]);
+    select.mockResolvedValue([
+      { id: 'row-1', userId: 'user-1', codeHash: hash('OTHER-CODE'), usedAt: null },
+    ]);
 
     const { verifyRecoveryCode } = await import('./webauthn');
     await expect(verifyRecoveryCode('AAAA-BBBB-CCCC')).resolves.toBeNull();
@@ -64,23 +70,45 @@ describe('burnRecoveryCode (single-use via conditional update, not read-then-wri
 
 describe('consumeChallenge — single atomic DELETE … RETURNING', () => {
   it('resolves ok:true with the bound recoveryCodeId, without a prior SELECT', async () => {
-    del.mockResolvedValue([{ recoveryCodeId: 'rc-1' }]);
+    del.mockResolvedValue([{ recoveryCodeId: 'rc-1', userId: 'user-1' }]);
 
     const { consumeChallenge } = await import('./webauthn');
     await expect(consumeChallenge('chal-1', 'registration')).resolves.toEqual({
       ok: true,
       recoveryCodeId: 'rc-1',
+      userId: 'user-1',
     });
     expect(select).not.toHaveBeenCalled();
   });
 
   it('resolves ok:true with recoveryCodeId:null for an authentication challenge', async () => {
-    del.mockResolvedValue([{ recoveryCodeId: null }]);
+    del.mockResolvedValue([{ recoveryCodeId: null, userId: 'user-1' }]);
 
     const { consumeChallenge } = await import('./webauthn');
     await expect(consumeChallenge('chal-2', 'authentication')).resolves.toEqual({
       ok: true,
       recoveryCodeId: null,
+      userId: 'user-1',
+    });
+  });
+
+  it('carries the bound account through, so verify never reads it from the request (#1200)', async () => {
+    del.mockResolvedValue([{ recoveryCodeId: null, userId: 'user-7' }]);
+
+    const { consumeChallenge } = await import('./webauthn');
+    await expect(consumeChallenge('chal-5', 'registration')).resolves.toMatchObject({
+      userId: 'user-7',
+    });
+  });
+
+  it('resolves userId:null for a first setup — there is no account yet (#1200)', async () => {
+    del.mockResolvedValue([{ recoveryCodeId: null, userId: null }]);
+
+    const { consumeChallenge } = await import('./webauthn');
+    await expect(consumeChallenge('chal-6', 'registration')).resolves.toEqual({
+      ok: true,
+      recoveryCodeId: null,
+      userId: null,
     });
   });
 
@@ -91,20 +119,25 @@ describe('consumeChallenge — single atomic DELETE … RETURNING', () => {
     await expect(consumeChallenge('chal-3', 'registration')).resolves.toEqual({
       ok: false,
       recoveryCodeId: null,
+      userId: null,
     });
   });
 
   it('lets only the first of two concurrent consumers of the same challenge win', async () => {
-    del.mockResolvedValueOnce([{ recoveryCodeId: 'rc-1' }]).mockResolvedValueOnce([]);
+    del
+      .mockResolvedValueOnce([{ recoveryCodeId: 'rc-1', userId: 'user-1' }])
+      .mockResolvedValueOnce([]);
 
     const { consumeChallenge } = await import('./webauthn');
     await expect(consumeChallenge('chal-4', 'registration')).resolves.toEqual({
       ok: true,
       recoveryCodeId: 'rc-1',
+      userId: 'user-1',
     });
     await expect(consumeChallenge('chal-4', 'registration')).resolves.toEqual({
       ok: false,
       recoveryCodeId: null,
+      userId: null,
     });
   });
 });

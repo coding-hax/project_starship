@@ -241,6 +241,11 @@ test('AC3 (#342): journal_entries trägt kein neues Klartext-Inhaltsfeld — nur
 
   expect(new Set(columns.rows.map((r) => r.column_name as string))).toEqual(
     new Set([
+      // `user_id` kam mit #1200 dazu (ADR-0031): wem der Eintrag gehört, nicht
+      // was darin steht. Wie `entry_date` ist das Metadatum, das der
+      // inkrementelle Sync braucht — der Server lernt daraus, an wen die Zeile
+      // auszuliefern ist, und weiterhin nichts über ihren Inhalt.
+      'user_id',
       'id',
       'updated_at',
       'deleted_at',

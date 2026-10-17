@@ -31,7 +31,6 @@ async function moduleOf(block: ReturnType<Page['locator']>): Promise<string> {
   if (await block.locator('.events-overview__next, .events-overview__empty').count())
     return 'kalender';
   if (await block.locator('#uebersicht-aufgaben-heading').count()) return 'aufgaben';
-  if (await block.locator('.activity-month-strip').count()) return 'aktivitaeten';
   if (await block.locator('.habit-today').count()) return 'routinen';
   throw new Error('Unbekanntes Modul in .overview-block');
 }
@@ -77,7 +76,7 @@ test('AK1: ab 768px stehen die Sektionen in zwei Spalten, die Modulreihenfolge b
   const modules = await Promise.all(
     Array.from({ length: count }, (_, i) => moduleOf(blocks.nth(i))),
   );
-  const expectedOrder = ['wetter', 'kalender', 'aufgaben', 'aktivitaeten', 'routinen'].filter((m) =>
+  const expectedOrder = ['wetter', 'kalender', 'aufgaben', 'routinen'].filter((m) =>
     modules.includes(m),
   );
   expect(modules, 'Reihenfolge aus uebersicht-sections.tsx bleibt erhalten').toEqual(expectedOrder);

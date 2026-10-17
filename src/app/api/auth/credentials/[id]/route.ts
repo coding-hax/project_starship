@@ -1,20 +1,21 @@
 import { NextResponse } from 'next/server';
-import { requireOwner, UnauthorizedError } from '@/auth/session';
+import { authErrorResponse } from '@/auth/auth-response';
+import { requireUser } from '@/auth/session';
 import { renameCredential, revokeCredential } from '@/auth/webauthn';
 
 /** Idempotent on "not-found"; the last remaining passkey is never revocable (self-lockout guard). */
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  let user;
   try {
-    await requireOwner();
+    user = await requireUser();
   } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const response = authErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 
   const { id } = await params;
-  const result = await revokeCredential(id);
+  const result = await revokeCredential(user.userId, id);
 
   if (result === 'last-credential') {
     return NextResponse.json(
@@ -28,12 +29,12 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
 /** Empty/whitespace label clears back to "Unbenanntes Gerät" (null in storage). */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  let user;
   try {
-    await requireOwner();
+    user = await requireUser();
   } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const response = authErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 
@@ -45,7 +46,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const label = trimmed.length > 0 ? trimmed : null;
 
   const { id } = await params;
-  const renamed = await renameCredential(id, label);
+  const renamed = await renameCredential(user.userId, id, label);
 
   if (!renamed) {
     return NextResponse.json({ error: 'Gerät nicht gefunden.' }, { status: 404 });

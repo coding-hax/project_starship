@@ -29,7 +29,7 @@ const TASK_ROW_COUNT = HISTORY_ABOVE + 1 + HISTORY_BELOW;
 
 // These tests navigate through many routes, and on the dev server every route
 // compiles on first visit — this spec is the only one that reaches /routinen,
-// /journal, /aktivitaeten and /kalender, so it pays all of those cold compiles on
+// /journal and /kalender, so it pays all of those cold compiles on
 // top of repeatedly rendering the tall task list. The heaviest case sits just over
 // Playwright's default 30s; give the whole file room the same way journal-key-race
 // does (test.describe.configure), rather than trimming coverage. Not a flake mask:
@@ -116,11 +116,13 @@ function nav(page: Page) {
 }
 
 /**
- * Aktivitäten is the sixth bottom-nav entry (issue #180), so on the 375px viewport
- * the nav is a horizontal carousel (issue #205) and its last item sits off-screen —
- * not reliably clickable. This ticket is about the scroll position *after* an in-app
- * navigation, not about the carousel, so flatten every slot to fit all six without
- * overflow (the same lever nav-order.mobile.spec.ts uses). It must be an init script
+ * The bottom nav is a horizontal carousel past five entries (issue #205), and an
+ * item scrolled off-screen is not reliably clickable. Five entries fit since
+ * #1200 removed Aktivitäten, so nothing overflows today — this stays because the
+ * test is about the scroll position *after* an in-app navigation, not about the
+ * carousel, and a sixth module must not quietly turn these clicks flaky again.
+ * Flattening every slot keeps them reachable at any count (the same lever
+ * nav-order.mobile.spec.ts uses). It must be an init script
  * armed before the navigation that installs it, and it retries until `<head>` exists,
  * because `addInitScript` runs before the document has parsed a single tag.
  */
@@ -209,21 +211,20 @@ test('von einer heruntergescrollten Seite per Bottom-Nav auf die Übersicht wech
 // AC3 is split across the next two tests, one per half of its definition. Kept
 // apart on purpose, not merged for tidiness: on the dev server every route
 // compiles on first visit, and *this* spec is the only one that reaches
-// /routinen, /journal, /aktivitaeten and /kalender — one test walking all of them
+// /routinen, /journal and /kalender — one test walking all of them
 // plus the tall-list renders overruns Playwright's 30s per-test budget. Each half
 // pays only its own share and stays inside it, without touching the timeout.
 test('keine anker-lose Route erbt die Scrollposition der vorherigen — alle landen oben (issue #647 AC3)', async ({
   page,
 }) => {
   await seedTallOpenTaskList(page);
-  // Reach Aktivitäten (carousel overflow) by a plain click like every other tab.
+  // Every tab reachable by a plain click, whatever the entry count (see above).
   await fitAllNavItems(page);
 
   const anchorLessRoutes: { path: string; label: string }[] = [
     { path: '/uebersicht', label: 'Übersicht' },
     { path: '/routinen', label: 'Routinen' },
     { path: '/journal', label: 'Journal' },
-    { path: '/aktivitaeten', label: 'Aktivitäten' },
   ];
 
   // The navigation under test is always "a scrolled /aufgaben → route B". The tall

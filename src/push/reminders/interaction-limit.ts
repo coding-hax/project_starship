@@ -24,11 +24,22 @@ function buildBody(daysLeft: number): string {
   return `Läuft in ${daysLeft} Tagen ab (${date}) — siehe Issue #70.`;
 }
 
-export async function build(now: Date): Promise<PushPayload | null> {
+/**
+ * The only reminder that is about the installation, not about the account's own
+ * data — `userId` is unused on purpose, so the `ReminderKind` signature stays
+ * uniform. It reaches every admin (see `sendDueReminders`), not every account:
+ * nobody but an admin can act on it.
+ */
+export async function build(now: Date, _userId: string): Promise<PushPayload | null> {
   const daysLeft = Math.floor((EXPIRY.getTime() - now.getTime()) / MS_PER_DAY);
   if (daysLeft >= WARNING_WINDOW_DAYS) return null;
 
   return { title: 'Interaction Limit läuft bald ab', body: buildBody(daysLeft), url: '/' };
 }
 
-export const interactionLimit: ReminderKind = { kind: 'interaction-limit', times: ['09:00'], build };
+export const interactionLimit: ReminderKind = {
+  kind: 'interaction-limit',
+  times: ['09:00'],
+  build,
+  adminOnly: true,
+};

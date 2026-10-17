@@ -16,12 +16,16 @@ vi.mock('@/db', () => ({
 
 import { build, selectOpenHabits } from './habits-open';
 
+/** The one account this suite's rows belong to — `build()` takes it explicitly since #1200. */
+const USER_ID = '00000000-0000-0000-0000-00000000a001';
+
 // 20:05 Berlin (CEST, UTC+2) on 2026-07-15 (a Wednesday).
 const AT_2005_BERLIN = new Date(Date.UTC(2026, 6, 15, 18, 5));
 
 function habit(overrides: Partial<Habit> = {}): Habit {
   return {
     id: 'habit-1',
+    userId: USER_ID,
     updatedAt: new Date(),
     deletedAt: null,
     syncedAt: null,
@@ -40,6 +44,7 @@ function habit(overrides: Partial<Habit> = {}): Habit {
 function log(overrides: Partial<HabitLog> = {}): HabitLog {
   return {
     id: 'log-1',
+    userId: USER_ID,
     updatedAt: new Date(),
     deletedAt: null,
     syncedAt: null,
@@ -154,25 +159,25 @@ describe('habits-open build()', () => {
   it('returns null when there are no habits at all', async () => {
     habitRows = [];
     logRows = [];
-    expect(await build(AT_2005_BERLIN)).toBeNull();
+    expect(await build(AT_2005_BERLIN, USER_ID)).toBeNull();
   });
 
   it('returns null when everything is done', async () => {
     habitRows = [habit()];
     logRows = [log()];
-    expect(await build(AT_2005_BERLIN)).toBeNull();
+    expect(await build(AT_2005_BERLIN, USER_ID)).toBeNull();
   });
 
   it('archived habits never appear, even if open', async () => {
     habitRows = [habit({ archivedAt: new Date('2026-06-01') })];
     logRows = [];
-    expect(await build(AT_2005_BERLIN)).toBeNull();
+    expect(await build(AT_2005_BERLIN, USER_ID)).toBeNull();
   });
 
   it('singular text, no streak suffix below 2', async () => {
     habitRows = [habit()];
     logRows = [];
-    expect(await build(AT_2005_BERLIN)).toEqual({
+    expect(await build(AT_2005_BERLIN, USER_ID)).toEqual({
       title: 'Noch offen',
       body: 'Laufen',
       url: '/routinen',
@@ -182,7 +187,7 @@ describe('habits-open build()', () => {
   it('the streak number appears in the text from 2 upward', async () => {
     habitRows = [habit()];
     logRows = [log({ logDate: '2026-07-14' }), log({ logDate: '2026-07-13' })];
-    expect(await build(AT_2005_BERLIN)).toEqual({
+    expect(await build(AT_2005_BERLIN, USER_ID)).toEqual({
       title: 'Noch offen',
       body: 'Laufen — 2 Tage in Folge',
       url: '/routinen',
@@ -196,7 +201,7 @@ describe('habits-open build()', () => {
       habit({ id: 'c', name: 'Lesen', createdAt: new Date('2026-01-03') }),
     ];
     logRows = [];
-    expect(await build(AT_2005_BERLIN)).toEqual({
+    expect(await build(AT_2005_BERLIN, USER_ID)).toEqual({
       title: '3 Routinen heute noch offen',
       body: 'Laufen, Meditieren und 1 weitere',
       url: '/routinen',

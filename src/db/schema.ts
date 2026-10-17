@@ -3,12 +3,13 @@ import {
   bigint,
   boolean,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
   pgSequence,
   pgTable,
-  real,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -24,9 +25,47 @@ import type { Envelope } from '@/crypto/envelope';
 export const syncSeq = pgSequence('sync_seq');
 
 /**
- * The five columns every synchronised table must carry (ARCHITECTURE.md).
+ * One account. Not synchronised — an account is infrastructure like `sessions`,
+ * not a row a client may push (ADR-0031), so it carries no `syncColumns` and has
+ * no `SYNC_REGISTRY` entry.
  *
+ * `role` is the whole authorisation model: `'admin'` additionally sees /admin.
+ * No second auth stack, no permission table (ADR-0031 decision 3).
+ *
+ * `blockedAt` is a lock, not a delete: the rows stay, `requireUser()` answers
+ * 403 instead of 401 so the client can tell "gesperrt" from "abgemeldet".
+ * Deleting an account is a hard delete and takes every row with it through
+ * `ON DELETE CASCADE` on `userId` below — deliberately not a tombstone, which
+ * would heal itself from any device that still holds the data.
+ *
+ * `displayName` is a label the admin assigns to recognise the account in /admin.
+ * It is never user content and never shown to anyone but an admin.
+ */
+export const users = pgTable(
+  'users',
+  {
+    id: uuid('id').primaryKey(),
+    role: text('role').$type<'admin' | 'user'>().notNull().default('user'),
+    displayName: text('display_name'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    blockedAt: timestamp('blocked_at', { withTimezone: true }),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  },
+  (table) => [index('users_role_idx').on(table.role)],
+);
+
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+
+/**
+ * The six columns every synchronised table must carry (ARCHITECTURE.md).
+ *
+ * - `userId`    the owning account (ADR-0031). Part of the primary key, see
+ *               `tenantPrimaryKey` below — not just a filter column.
  * - `id`        UUIDv7, generated on the client so offline creation needs no roundtrip.
+ *               Unique only *within* an account: two accounts may legitimately hold
+ *               the same `id`, which is exactly what the checked-in fixed row ids
+ *               (`JOURNAL_HABIT_ID`, `JOURNAL_KEYS_ROW_ID`, ADR-0016) need.
  * - `updatedAt` display/tiebreaker only — no longer the conflict authority (ADR-0008).
  * - `deletedAt` soft delete. A hard delete would resurrect the row on the next sync.
  * - `syncedAt`  on the client: successfully pushed. On the server: when the row last
@@ -35,16 +74,59 @@ export const syncSeq = pgSequence('sync_seq');
  *               highest sequence number wins. Never set by the client — see
  *               `src/db/sync-tables.ts`. Set explicitly (`nextval`) on every write,
  *               not as a column default, because a default does not fire on UPDATE.
+ *               Stays one global sequence across all accounts: the pull filters by
+ *               `userId`, so an account simply sees gaps in the numbering.
  *
  * Spread this into every feature table. Do not retype it.
  */
 export const syncColumns = {
-  id: uuid('id').primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  id: uuid('id').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   syncedAt: timestamp('synced_at', { withTimezone: true }),
   syncSeq: bigint('sync_seq', { mode: 'number' }).notNull(),
 };
+
+/**
+ * `(user_id, id)` instead of `id` alone — every synchronised table, no exception
+ * (ADR-0031, enforced by `scripts/check-tenant-isolation.sh`).
+ *
+ * A composite key is what makes the dangerous case structural rather than
+ * forbidden: a push carrying another account's `rowId` lands as *that account's
+ * own* row, it can never overwrite the stranger's. With `id` alone as the key,
+ * the same push would hit the existing row and only a `WHERE user_id = …` that
+ * someone remembered to write would stand between the two accounts.
+ */
+function tenantPrimaryKey(table: { userId: AnyColumn; id: AnyColumn }) {
+  return primaryKey({ columns: [table.userId, table.id] });
+}
+
+/** Drizzle's column type, narrowed to what `tenantPrimaryKey`/`tenantForeignKey` need. */
+type AnyColumn = AnyPgColumn;
+
+/**
+ * A reference from one synchronised table to another, scoped to one account:
+ * `(user_id, <column>) → (user_id, id)`.
+ *
+ * The point is not convenience — it is that a cross-tenant reference fails at
+ * the database. A plain `habit_id → habits.id` would happily let an account
+ * hang a log on a stranger's routine, and nothing but care in the push handler
+ * would notice.
+ *
+ * No `onDelete` action anywhere: deleting a row is always a tombstone
+ * (ARCHITECTURE.md), never a `DELETE`, so the action would never fire. The one
+ * real delete — dropping an account — cascades from `users` instead.
+ */
+function tenantForeignKey(
+  columns: [AnyColumn, AnyColumn],
+  foreignColumns: [AnyColumn, AnyColumn],
+  name: string,
+) {
+  return foreignKey({ columns, foreignColumns, name });
+}
 
 /**
  * Key/value store for sync bookkeeping (last pull timestamp and the like).
@@ -56,12 +138,16 @@ export const syncState = pgTable(
   'sync_state',
   {
     ...syncColumns,
-    key: text('key').notNull().unique(),
+    key: text('key').notNull(),
     value: jsonb('value').notNull(),
   },
   (table) => [
+    tenantPrimaryKey(table),
     index('sync_state_updated_at_idx').on(table.updatedAt),
     index('sync_state_sync_seq_idx').on(table.syncSeq),
+    // Per account, not globally — two accounts each keep their own cursor under
+    // the same key (ADR-0031).
+    uniqueIndex('sync_state_user_id_key_idx').on(table.userId, table.key),
   ],
 );
 
@@ -90,13 +176,15 @@ export const tasks = pgTable(
      */
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /**
-     * Self-referencing, nullable — one level of subtasks (issue #89). No `onDelete`
-     * cascade: deleting is always a tombstone (see ARCHITECTURE.md), never a hard
-     * `DELETE`, so the FK action never fires. Cascading to children is app logic.
+     * Self-referencing, nullable — one level of subtasks (issue #89). The reference
+     * is composite (`tenantForeignKey` below), so a subtask can never point at a
+     * parent in another account. Cascading to children stays app logic.
      */
-    parentId: uuid('parent_id').references((): AnyPgColumn => tasks.id),
+    parentId: uuid('parent_id'),
   },
   (table) => [
+    tenantPrimaryKey(table),
+    tenantForeignKey([table.userId, table.parentId], [table.userId, table.id], 'tasks_parent_fk'),
     index('tasks_updated_at_idx').on(table.updatedAt),
     index('tasks_due_at_idx').on(table.dueAt),
     index('tasks_sync_seq_idx').on(table.syncSeq),
@@ -129,6 +217,7 @@ export const habits = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    tenantPrimaryKey(table),
     index('habits_updated_at_idx').on(table.updatedAt),
     index('habits_sync_seq_idx').on(table.syncSeq),
     index('habits_created_at_idx').on(table.createdAt),
@@ -148,17 +237,21 @@ export const habitLogs = pgTable(
   'habit_logs',
   {
     ...syncColumns,
-    habitId: uuid('habit_id')
-      .notNull()
-      .references(() => habits.id),
+    habitId: uuid('habit_id').notNull(),
     logDate: date('log_date').notNull(),
     done: boolean('done').notNull().default(true),
   },
   (table) => [
+    tenantPrimaryKey(table),
+    tenantForeignKey([table.userId, table.habitId], [habits.userId, habits.id], 'habit_logs_habit_fk'),
     index('habit_logs_updated_at_idx').on(table.updatedAt),
     index('habit_logs_sync_seq_idx').on(table.syncSeq),
     index('habit_logs_habit_id_idx').on(table.habitId),
-    uniqueIndex('habit_logs_habit_id_log_date_idx').on(table.habitId, table.logDate),
+    uniqueIndex('habit_logs_user_id_habit_id_log_date_idx').on(
+      table.userId,
+      table.habitId,
+      table.logDate,
+    ),
   ],
 );
 
@@ -178,16 +271,24 @@ export const habitFreezes = pgTable(
   'habit_freezes',
   {
     ...syncColumns,
-    habitId: uuid('habit_id')
-      .notNull()
-      .references(() => habits.id),
+    habitId: uuid('habit_id').notNull(),
     freezeDate: date('freeze_date').notNull(),
   },
   (table) => [
+    tenantPrimaryKey(table),
+    tenantForeignKey(
+      [table.userId, table.habitId],
+      [habits.userId, habits.id],
+      'habit_freezes_habit_fk',
+    ),
     index('habit_freezes_updated_at_idx').on(table.updatedAt),
     index('habit_freezes_sync_seq_idx').on(table.syncSeq),
     index('habit_freezes_habit_id_idx').on(table.habitId),
-    uniqueIndex('habit_freezes_habit_id_freeze_date_idx').on(table.habitId, table.freezeDate),
+    uniqueIndex('habit_freezes_user_id_habit_id_freeze_date_idx').on(
+      table.userId,
+      table.habitId,
+      table.freezeDate,
+    ),
   ],
 );
 
@@ -195,80 +296,24 @@ export type HabitFreeze = typeof habitFreezes.$inferSelect;
 export type NewHabitFreeze = typeof habitFreezes.$inferInsert;
 
 /* -------------------------------------------------------------------------- */
-/* Garmin (ADR-0011). Server-origin data: read-only in the sync engine.       */
-/* -------------------------------------------------------------------------- */
-
-/**
- * OAuth1/OAuth2 token pair for `connectapi.garmin.com`. Never synchronised — like
- * the auth tables below, it carries no `syncColumns` and never appears in
- * `SYNC_TABLES` (src/local/types.ts). `token` is opaque and is never logged, not
- * even truncated.
- */
-export const garminTokens = pgTable('garmin_tokens', {
-  id: uuid('id').primaryKey(),
-  kind: text('kind').$type<'oauth1' | 'oauth2'>().notNull().unique(),
-  token: jsonb('token').notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
-export type GarminToken = typeof garminTokens.$inferSelect;
-export type NewGarminToken = typeof garminTokens.$inferInsert;
-
-/**
- * Read-only in the sync engine (src/db/sync-tables.ts: `readOnly: true`) — written
- * only by `/api/garmin-sync`, never by a client push.
- *
- * `garminActivityId` is Garmin's own id, the natural key for the upsert; `id` stays
- * a server-generated UUIDv7 like every other synced row. `elapsedSeconds -
- * durationSeconds` is the pause length — computed in the UI, not stored.
- *
- * `track` is the downsampled time series stored column-wise
- * (`{ n, distance, lat, lon, hr, speed, elevation }`, each an array of length `n`)
- * instead of as a list of point objects — at 500 points this roughly halves the
- * JSON size, since the keys are not repeated 500 times. Nullable: filled in by a
- * later sync run if the details fetch failed the first time.
- */
-export const garminActivities = pgTable(
-  'garmin_activities',
-  {
-    ...syncColumns,
-    garminActivityId: bigint('garmin_activity_id', { mode: 'number' }).notNull().unique(),
-    activityType: text('activity_type').notNull(),
-    name: text('name'),
-    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
-    distanceMeters: integer('distance_meters'),
-    durationSeconds: integer('duration_seconds'),
-    elapsedSeconds: integer('elapsed_seconds'),
-    elevationGain: integer('elevation_gain'),
-    elevationLoss: integer('elevation_loss'),
-    averageHr: integer('average_hr'),
-    maxHr: integer('max_hr'),
-    averageSpeed: real('average_speed'),
-    calories: integer('calories'),
-    track: jsonb('track'),
-    /** Static map image as a data URL, fetched once (src/features/garmin/static-map.ts). */
-    mapImage: text('map_image'),
-    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
-  },
-  (table) => [
-    index('garmin_activities_updated_at_idx').on(table.updatedAt),
-    index('garmin_activities_sync_seq_idx').on(table.syncSeq),
-    index('garmin_activities_started_at_idx').on(table.startedAt),
-    uniqueIndex('garmin_activities_garmin_activity_id_idx').on(table.garminActivityId),
-  ],
-);
-
-export type GarminActivity = typeof garminActivities.$inferSelect;
-export type NewGarminActivity = typeof garminActivities.$inferInsert;
-
-/* -------------------------------------------------------------------------- */
 /* Auth. None of this is ever synchronised, so none of it carries syncColumns. */
 /* -------------------------------------------------------------------------- */
 
-/** Registered passkeys. Single user, but a phone and a laptop are two credentials. */
+/**
+ * Registered passkeys — a phone and a laptop are two credentials of the same
+ * account.
+ *
+ * `credentialId` stays **globally** unique, unlike the synchronised tables
+ * above: it is what the login ceremony presents, and resolving it to an account
+ * is the whole point (ADR-0031). A per-account uniqueness would mean two
+ * accounts could register the same authenticator and login could no longer tell
+ * whose session to mint.
+ */
 export const credentials = pgTable('credentials', {
   id: uuid('id').primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   credentialId: text('credential_id').notNull().unique(),
   publicKey: text('public_key').notNull(),
   counter: bigint('counter', { mode: 'number' }).notNull().default(0),
@@ -286,6 +331,15 @@ export const sessions = pgTable(
   'sessions',
   {
     id: uuid('id').primaryKey(),
+    /**
+     * Whose session this is (ADR-0031). This column *is* the authorisation:
+     * `requireUser()` reads it here instead of deriving a single owner id from
+     * the environment, which is what made the pre-#1200 owner check
+     * tautological.
+     */
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
     tokenHash: text('token_hash').notNull().unique(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
@@ -312,7 +366,7 @@ export const sessions = pgTable(
     /**
      * Last authenticated request through this session (issue #1103). Dropped in
      * #857 for being a dead column — the auth middleware only checked cookie
-     * presence, no DB access (#599). Comes back *alive* this time: `requireOwner()`
+     * presence, no DB access (#599). Comes back *alive* this time: `requireUser()`
      * writes it through a throttled, guarded `UPDATE` (at most once per hour per
      * session), never once per request, so the cheap-write-path concern from #857
      * still holds. Nullable, no default — a session minted before this column
@@ -320,7 +374,10 @@ export const sessions = pgTable(
      */
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   },
-  (table) => [index('sessions_expires_at_idx').on(table.expiresAt)],
+  (table) => [
+    index('sessions_expires_at_idx').on(table.expiresAt),
+    index('sessions_user_id_idx').on(table.userId),
+  ],
 );
 
 /**
@@ -336,13 +393,33 @@ export const authChallenges = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     recoveryCodeId: uuid('recovery_code_id').references(() => recoveryCodes.id),
+    /**
+     * Which account the registration about to happen belongs to (ADR-0031).
+     * Server-side for the same reason the challenge itself is: a client that
+     * could name the account would be a client that could enrol a passkey into
+     * a stranger's.
+     *
+     * Null means "no account yet" — the very first setup, where `verify` creates
+     * the admin account inside the same transaction as the credential. An
+     * abandoned ceremony therefore leaves no empty account behind.
+     */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
   },
   (table) => [index('auth_challenges_expires_at_idx').on(table.expiresAt)],
 );
 
-/** The recovery code, hashed. Shown exactly once, at first setup. */
+/**
+ * The recovery code, hashed. Shown exactly once, at first setup.
+ *
+ * `codeHash` stays globally unique for the same reason as
+ * `credentials.credentialId`: the code is presented without an account and has
+ * to resolve to one.
+ */
 export const recoveryCodes = pgTable('recovery_codes', {
   id: uuid('id').primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   codeHash: text('code_hash').notNull().unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   usedAt: timestamp('used_at', { withTimezone: true }),
@@ -356,15 +433,29 @@ export type Session = typeof sessions.$inferSelect;
  * kein `syncColumns`, keine Sync-Registrierung, kein Dexie-Gegenstück: das Abo
  * gehört zum Browser-Endpunkt, nicht zu synchronisierten Nutzerdaten.
  */
-export const pushSubscriptions = pgTable('push_subscriptions', {
-  id: uuid('id').primaryKey(),
-  endpoint: text('endpoint').notNull().unique(),
-  p256dh: text('p256dh').notNull(),
-  auth: text('auth').notNull(),
-  userAgent: text('user_agent'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
-});
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    userAgent: text('user_agent'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  },
+  (table) => [
+    // Per account, not globally: a push endpoint belongs to a *browser*, and two
+    // people using the same browser would otherwise fight over one row. Which of
+    // them actually receives a notification is a separate problem — logging out
+    // has to drop the subscription (#1205, S6).
+    uniqueIndex('push_subscriptions_user_id_endpoint_idx').on(table.userId, table.endpoint),
+    index('push_subscriptions_user_id_idx').on(table.userId),
+  ],
+);
 
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 
@@ -416,12 +507,24 @@ export const reminderSends = pgTable(
   'reminder_sends',
   {
     id: uuid('id').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
     kind: text('kind').notNull(),
     sendDate: date('send_date').notNull(),
     slot: text('slot').notNull(),
     sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [uniqueIndex('reminder_sends_kind_send_date_slot_idx').on(table.kind, table.sendDate, table.slot)],
+  // Per account (ADR-0031): two accounts must both be able to claim the same
+  // slot on the same day, one account never twice.
+  (table) => [
+    uniqueIndex('reminder_sends_user_id_kind_send_date_slot_idx').on(
+      table.userId,
+      table.kind,
+      table.sendDate,
+      table.slot,
+    ),
+  ],
 );
 
 export type ReminderSend = typeof reminderSends.$inferSelect;
@@ -451,9 +554,10 @@ export const reminderPrefs = pgTable(
     times: jsonb('times').$type<string[]>().notNull().default([]),
   },
   (table) => [
+    tenantPrimaryKey(table),
     index('reminder_prefs_updated_at_idx').on(table.updatedAt),
     index('reminder_prefs_sync_seq_idx').on(table.syncSeq),
-    uniqueIndex('reminder_prefs_kind_idx').on(table.kind),
+    uniqueIndex('reminder_prefs_user_id_kind_idx').on(table.userId, table.kind),
   ],
 );
 
@@ -481,9 +585,10 @@ export const categoryColors = pgTable(
     color: text('color').notNull(),
   },
   (table) => [
+    tenantPrimaryKey(table),
     index('category_colors_updated_at_idx').on(table.updatedAt),
     index('category_colors_sync_seq_idx').on(table.syncSeq),
-    uniqueIndex('category_colors_category_idx').on(table.category),
+    uniqueIndex('category_colors_user_id_category_idx').on(table.userId, table.category),
   ],
 );
 
@@ -517,6 +622,7 @@ export const journalEntries = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    tenantPrimaryKey(table),
     index('journal_entries_updated_at_idx').on(table.updatedAt),
     index('journal_entries_sync_seq_idx').on(table.syncSeq),
     index('journal_entries_entry_date_idx').on(table.entryDate),
@@ -541,6 +647,7 @@ export const journalKeys = pgTable(
     recoveryEnvelope: jsonb('recovery_envelope').$type<Envelope>(),
   },
   (table) => [
+    tenantPrimaryKey(table),
     index('journal_keys_updated_at_idx').on(table.updatedAt),
     index('journal_keys_sync_seq_idx').on(table.syncSeq),
   ],
@@ -593,6 +700,7 @@ export const events = pgTable(
     reminderMinutes: integer('reminder_minutes'),
   },
   (table) => [
+    tenantPrimaryKey(table),
     index('events_updated_at_idx').on(table.updatedAt),
     index('events_sync_seq_idx').on(table.syncSeq),
     index('events_starts_at_idx').on(table.startsAt),
@@ -622,9 +730,7 @@ export const eventExceptions = pgTable(
   'event_exceptions',
   {
     ...syncColumns,
-    eventId: uuid('event_id')
-      .notNull()
-      .references(() => events.id),
+    eventId: uuid('event_id').notNull(),
     originalDate: date('original_date').notNull(),
     cancelled: boolean('cancelled').notNull().default(false),
     overrideStartsAt: timestamp('override_starts_at', { withTimezone: true }),
@@ -633,10 +739,17 @@ export const eventExceptions = pgTable(
     overrideEndDate: date('override_end_date'),
   },
   (table) => [
+    tenantPrimaryKey(table),
+    tenantForeignKey(
+      [table.userId, table.eventId],
+      [events.userId, events.id],
+      'event_exceptions_event_fk',
+    ),
     index('event_exceptions_updated_at_idx').on(table.updatedAt),
     index('event_exceptions_sync_seq_idx').on(table.syncSeq),
     index('event_exceptions_event_id_idx').on(table.eventId),
-    uniqueIndex('event_exceptions_event_id_original_date_idx').on(
+    uniqueIndex('event_exceptions_user_id_event_id_original_date_idx').on(
+      table.userId,
       table.eventId,
       table.originalDate,
     ),

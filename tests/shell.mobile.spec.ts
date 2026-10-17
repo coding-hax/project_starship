@@ -20,18 +20,11 @@ import { registerPasskey, resetDatabase } from './helpers';
 test.use({ storageState: { cookies: [], origins: [] } });
 
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
-const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
 
 test.beforeEach(async ({ page }) => {
   await resetDatabase();
-  // issue #230/memory: /aktivitaeten stößt beim Öffnen /api/garmin-sync an, ungemockt
   // 503 landet als Dev-Overlay-Badge im DOM. /uebersicht holt Wetter — ungemockt
   // leckt der echte Fetch in jeden Test, der diese Route besucht (beide unten besucht).
-  await page.route(GARMIN_SYNC_PATTERN, (route) =>
-    route.fulfill({
-      json: { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 },
-    }),
-  );
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
       json: {
@@ -134,7 +127,6 @@ const GROUND_ROUTES: { ground: string; path: string }[] = [
   { ground: 'kalender', path: '/kalender' },
   { ground: 'routinen', path: '/routinen' },
   { ground: 'journal', path: '/journal' },
-  { ground: 'aktivitaeten', path: '/aktivitaeten' },
   { ground: 'wetter', path: '/wetter/2026-07-18' },
   { ground: 'einstellungen', path: '/einstellungen' },
 ];

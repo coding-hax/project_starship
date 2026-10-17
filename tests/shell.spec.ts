@@ -4,23 +4,12 @@ import { expectUebersichtLoaded, registerPasskey, resetDatabase } from './helper
 
 const NAV_LABELS = NAV_ITEMS.map((item) => item.label);
 
-// issue #230 — /aktivitaeten stößt beim Öffnen /api/garmin-sync an, das hier ohne echte
-// Garmin-Anbindung mit 503 antwortet. Ungemockt landet der Fehler als Next-Dev-Overlay-
-// "Issue"-Badge im DOM, das den nächsten Klick auf den ersten (linken) Nav-Tab abfängt —
-// dieselbe Klasse Leck wie bei open-meteo (siehe aktivitaeten.spec.ts).
-const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
-
 // Drives the auth UI itself and asserts the never-registered state, so it opts out of
 // the shared owner session and keeps the full reset (#115).
 test.use({ storageState: { cookies: [], origins: [] } });
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async () => {
   await resetDatabase();
-  await page.route(GARMIN_SYNC_PATTERN, (route) =>
-    route.fulfill({
-      json: { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 },
-    }),
-  );
 });
 
 test('an unauthenticated visitor is sent to the login', async ({ page }) => {
@@ -50,7 +39,6 @@ test('all six tabs are reachable and mark themselves current (issue #123 AC1, #1
     // Titel „Diese Woche" seit issue #898 — der Nav-Tab heißt weiterhin „Kalender".
     ['Kalender', '/kalender', 'Diese Woche'],
     ['Journal', '/journal', 'Wie war dein Tag?'],
-    ['Aktivitäten', '/aktivitaeten', 'Aktivitäten'],
     // Übersicht's heading is a time-of-day greeting (issue #862), not a fixed
     // string — checked below via expectUebersichtLoaded instead.
     ['Übersicht', '/uebersicht', null],
@@ -138,6 +126,21 @@ test('/heute permanently redirects to /uebersicht instead of 404ing (issue #161)
   await registerPasskey(page);
 
   const response = await page.goto('/heute');
+  expect(response?.status()).toBeLessThan(400);
+  await expect(page).toHaveURL(/\/uebersicht$/);
+  await expectUebersichtLoaded(page);
+
+  const redirected = response!.request().redirectedFrom();
+  expect(redirected).not.toBeNull();
+  expect(await redirected!.response().then((r) => r?.status())).toBe(308);
+});
+
+test('/aktivitaeten permanently redirects to /uebersicht instead of 404ing (issue #1200 AC1)', async ({
+  page,
+}) => {
+  await registerPasskey(page);
+
+  const response = await page.goto('/aktivitaeten');
   expect(response?.status()).toBeLessThan(400);
   await expect(page).toHaveURL(/\/uebersicht$/);
   await expectUebersichtLoaded(page);

@@ -17,7 +17,6 @@ import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, withDb } from
  */
 
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
-const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
@@ -26,11 +25,6 @@ test.beforeEach(async ({ page }) => {
   // /uebersicht fetches weather and pokes Garmin sync on load (see
   // grundfarbe-vollfarbe.spec.ts's own beforeEach) — mocked so the AK-Ü tests
   // below can visit it without leaking a real network call.
-  await page.route(GARMIN_SYNC_PATTERN, (route) =>
-    route.fulfill({
-      json: { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 },
-    }),
-  );
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
       json: {

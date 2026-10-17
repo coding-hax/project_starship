@@ -1,7 +1,7 @@
 /**
  * Four stat tiles atop /routinen (issue #905, vierte Kachel TOTAL #1037) —
  * same "own surface, own ink" card as habit-table.css/habit-history-card.css,
- * `dl`/`dt`/`dd` stat shape from activity-block.css's Kopfzahlen.
+ * `dl`/`dt`/`dd` stat shape.
  */
 
 .habit-tiles {

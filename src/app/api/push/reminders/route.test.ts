@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const requireOwnerMock = vi.fn();
+const requireUserMock = vi.fn();
 vi.mock('@/auth/session', () => ({
-  requireOwner: (...args: unknown[]) => requireOwnerMock(...args),
+  requireUser: (...args: unknown[]) => requireUserMock(...args),
 }));
 
 const sendDueRemindersMock = vi.fn();
@@ -19,7 +19,7 @@ function makeRequest(headers: Record<string, string> = {}): Request {
 describe('POST /api/push/reminders', () => {
   beforeEach(() => {
     vi.stubEnv('REMINDER_SECRET', SECRET);
-    requireOwnerMock.mockReset().mockRejectedValue(new Error('no session'));
+    requireUserMock.mockReset().mockRejectedValue(new Error('no session'));
     sendDueRemindersMock.mockReset();
   });
 
@@ -63,7 +63,9 @@ describe('POST /api/push/reminders', () => {
   });
 
   it('a valid owner session authorizes too — the manual kick from the app', async () => {
-    requireOwnerMock.mockResolvedValue('owner-id');
+    // Only an admin may kick the cron by hand since #1200 — one tick now
+    // delivers to every account.
+    requireUserMock.mockResolvedValue({ userId: 'admin-1', role: 'admin' });
     sendDueRemindersMock.mockResolvedValue({ sent: [], skipped: [] });
     const { POST } = await import('./route');
 

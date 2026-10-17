@@ -8,8 +8,13 @@ an der sie greift.
 
 ## Was das hier ist
 
-Persönliche Produktivitäts-PWA für **eine einzige Person**: Termine, Aufgaben,
-Journal, Routinen. Mobile-first, offline-fähig.
+Persönliche Produktivitäts-PWA: Termine, Aufgaben, Journal, Routinen.
+Mobile-first, offline-fähig.
+
+**Mehrbenutzer seit ADR-0031** — mehrere Konten, jedes streng für sich. Jede
+synchronisierte Tabelle trägt `user_id` und hat `(user_id, id)` als
+Primärschlüssel; `requireUser()` liest das Konto aus der Sitzung. Zugang nur über
+Einladungs-Links vom Admin, keine offene Registrierung.
 
 ```bash
 pnpm dev           # Entwicklung

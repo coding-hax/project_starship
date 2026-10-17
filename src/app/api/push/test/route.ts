@@ -1,19 +1,20 @@
 import { NextResponse } from 'next/server';
-import { requireOwner, UnauthorizedError } from '@/auth/session';
-import { sendPushToAll } from '@/push/send';
+import { authErrorResponse } from '@/auth/auth-response';
+import { requireUser } from '@/auth/session';
+import { sendPushToUser } from '@/push/send';
 
 /** Manual test send (AC1) — the real reminders (due tasks, streaks) are separate tickets. */
 export async function POST() {
+  let user;
   try {
-    await requireOwner();
+    user = await requireUser();
   } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const response = authErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 
-  await sendPushToAll({
+  await sendPushToUser(user.userId, {
     title: 'Starship',
     body: 'Testnachricht',
     url: '/',

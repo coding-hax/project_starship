@@ -1,6 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { openMeteoForecastBody, registerPasskey, resetAppData, skewClock, withDb } from './helpers';
+import { registerPasskey, resetAppData, skewClock } from './helpers';
 
 /**
  * `OverviewBlock` (issue #652, Kartenkopf statt Seitengrund-Überschrift seit
@@ -82,46 +81,6 @@ test('Wetter und Aufgaben haben auf /uebersicht ein h2 mit dem Modulnamen, das i
     await expect(heading).toHaveCount(1);
     expect(await isVisuallyHidden(heading), `${name}-Überschrift muss verborgen sein`).toBe(true);
   }
-});
-
-/**
- * Aktivitäten ist server-seitige, gesyncte Daten (ADR-0011) — anders als die
- * übrigen Tests in dieser Datei darf `/api/sync/**` hier nicht blockiert sein,
- * sonst kommt die per `withDb()` eingefügte Aktivität nie in die IndexedDB
- * (gleiches Muster wie aktivitaeten.spec.ts).
- */
-test.describe('Aktivitäten (server-seitig gesynct)', () => {
-  test.beforeEach(async ({ page }) => {
-    await resetAppData();
-    // Das äußere beforeEach oben registriert einen abortenden Handler auf
-    // demselben Muster — Playwright hängt verschachtelte Hooks an, statt sie zu
-    // ersetzen, der Handler bliebe sonst aktiv und die hier eingefügte Aktivität
-    // käme nie über den Pull in die IndexedDB.
-    await page.unroute('**/api/sync/**');
-    await page.route('https://api.open-meteo.com/**', (route) =>
-      route.fulfill({ json: openMeteoForecastBody({ dates: ['2026-07-18'], tempsMax: [20], tempsMin: [10] }) }),
-    );
-    await registerPasskey(page);
-    await skewClock(page, NOW);
-  });
-
-  test('Aktivitäten hat auf /uebersicht ein h2 mit dem Modulnamen, das im DOM bleibt, aber verborgen ist (AK3)', async ({
-    page,
-  }) => {
-    await withDb((client) =>
-      client.query(
-        `INSERT INTO garmin_activities
-          (id, updated_at, deleted_at, synced_at, sync_seq, garmin_activity_id, activity_type, started_at, fetched_at)
-         VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4, now())`,
-        [randomUUID(), Math.floor(Math.random() * 1_000_000_000), 'running', '2020-01-01T00:00:00Z'],
-      ),
-    );
-
-    await page.goto('/uebersicht');
-    const heading = page.getByRole('heading', { name: 'Aktivitäten', level: 2 });
-    await expect(heading).toHaveCount(1);
-    expect(await isVisuallyHidden(heading)).toBe(true);
-  });
 });
 
 test('AK1: keine eigene Überschriftenzeile mehr auf dem Seitengrund — der Punkt in Bereichsfarbe entfällt ersatzlos', async ({

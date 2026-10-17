@@ -1,12 +1,12 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
-import { requireOwner, UnauthorizedError } from '@/auth/session';
+import { authErrorResponse } from '@/auth/auth-response';
+import { requireUser } from '@/auth/session';
 import { db } from '@/db';
 import { acquireSyncWriteLock } from '@/db/sync-lock';
 import { missingRequired, SYNC_REGISTRY, writableFields } from '@/db/sync-tables';
 import { detectOverwrite, resolveDeletedAt } from '@/local/conflict';
 import {
-  isReadOnlyTable,
   malformedFields,
   NATURAL_KEYS,
   type Mutation,
@@ -36,14 +36,20 @@ import {
  * Each write runs in its own savepoint: a DB constraint violation rolls back only
  * that mutation and is reported as `rejected` (`reason: 'constraint'`), instead of
  * aborting the whole transaction and 500-ing the entire batch.
+ *
+ * Every statement below carries `userId` from the session (ADR-0031). The row key
+ * is `(user_id, id)`, so a mutation naming another account's `rowId` cannot reach
+ * that row at all: the lookup misses, and the insert creates this account's own
+ * row under the same id. The `eq(table.userId, …)` clauses are the second lock on
+ * the same door — belt to the composite key's braces.
  */
 export async function POST(request: Request) {
+  let user;
   try {
-    await requireOwner();
+    user = await requireUser();
   } catch (error) {
-    if (error instanceof UnauthorizedError) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const response = authErrorResponse(error);
+    if (response) return response;
     throw error;
   }
 
@@ -71,19 +77,15 @@ export async function POST(request: Request) {
         continue;
       }
 
-      // Server-origin data (ADR-0011): rejected before it ever touches the table,
-      // not via an empty `writable` list — that alone would still let an empty
-      // payload through and tombstone a row via `deletedAt`.
-      if (isReadOnlyTable(mutation.table)) {
-        rejected.push({ mutationId: mutation.id, reason: 'read-only', missing: [] });
-        continue;
-      }
-
       const entry = SYNC_REGISTRY[mutation.table];
       const table = entry.table;
       const incomingUpdatedAt = new Date(mutation.updatedAt);
 
-      let [existing] = await tx.select().from(table).where(eq(table.id, mutation.rowId)).limit(1);
+      let [existing] = await tx
+        .select()
+        .from(table)
+        .where(and(eq(table.userId, user.userId), eq(table.id, mutation.rowId)))
+        .limit(1);
 
       const fields = writableFields(mutation.table, mutation.payload ?? {});
 
@@ -100,7 +102,9 @@ export async function POST(request: Request) {
         [existing] = await tx
           .select()
           .from(table)
-          .where(and(...keyFields.map((f) => eq(columns[f], fields[f]))))
+          .where(
+            and(eq(table.userId, user.userId), ...keyFields.map((f) => eq(columns[f], fields[f]))),
+          )
           .limit(1);
         if (existing) targetId = existing.id as string;
       }
@@ -134,9 +138,10 @@ export async function POST(request: Request) {
                 syncedAt: now,
                 syncSeq: sql`nextval('sync_seq')`,
               })
-              .where(eq(table.id, targetId));
+              .where(and(eq(table.userId, user.userId), eq(table.id, targetId)));
           } else {
             await sp.insert(table).values({
+              userId: user.userId,
               id: targetId,
               ...fields,
               updatedAt: incomingUpdatedAt,

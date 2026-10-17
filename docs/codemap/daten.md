@@ -2,7 +2,7 @@
 
 ## src/db
 
-- `schema.ts` — Drizzle-Schema, einzige Quelle der Wahrheit
+- `schema.ts` — Drizzle-Schema, einzige Quelle der Wahrheit; users-Tabelle, Mandanten-PK
 - `sync-tables.ts` / `sync-lock.ts` — Sync-Felder je Tabelle + Advisory-Lock
 - `index.ts` / `migrate.ts` — DB-Verbindung, Migrationen anwenden
 - `migrations/` — generierte Migrationen, nie von Hand
@@ -14,11 +14,11 @@
 - `dexie.ts` — IndexedDB: outbox, records, meta, Sonderstores
 - `outbox.ts` / `sync.ts` — Mutations-Queue + Push/Pull
 - `conflict.ts` / `use-live-table.ts` — Konfliktregeln (Delete/Restore/Upsert) + Live-Query
-- `push.ts` / `garmin-sync.ts` / `ics-fetch.ts` — einzige Stellen gegen push/garmin-sync/ics
+- `push.ts` / `ics-fetch.ts` — einzige Stellen gegen push/ics
 
 ## src/auth
 
-- `session.ts` / `device-cookie.ts` — Session-Token (Hash in DB), requireOwner(); Geräte-Etikett
+- `session.ts` / `auth-response.ts` / `device-cookie.ts` — Session-Token+requireUser(); 401/403-Antwort; Geräte-Etikett
 - `session-cookie.ts` — nur SESSION_COOKIE, von `middleware.ts` Edge-Runtime-ladbar
 - `webauthn.ts` / `rate-limit.ts` — Challenges/Credentials/Recovery; Fixed-Window-Limit, fail-open bei DB-Fehler
 

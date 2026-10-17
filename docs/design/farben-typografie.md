@@ -18,7 +18,7 @@ Alle Farben in **OKLCH**, damit Helligkeit über die Farbtöne hinweg konsistent
 | Termine     | Teal            | ruhig, strukturiert               |
 | Journal     | Warmes Violett  | persönlich, introspektiv          |
 | Routinen    | Sattes Grün     | Wachstum, Streaks                 |
-| Aktivitäten | Blau            | Garmin, Strecke/Puls (issue #180) |
+| Aktivitäten | Blau            | nur noch Swatch-Palette — das Modul fiel mit #1200 weg |
 | Wetter      | Teal-Cyan       | Vorhersage (issue #652)           |
 
 Jeder Bereich hat genau eine Akzentfarbe. Ein Element trägt genau eine Bedeutung.

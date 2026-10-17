@@ -1,6 +1,7 @@
 import { getTableColumns } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
+import { SYNC_TABLES } from '@/local/types';
 import { missingRequired, SYNC_REGISTRY, writableFields } from './sync-tables';
 
 describe('writableFields', () => {
@@ -227,21 +228,17 @@ describe('missingRequired for habit_logs', () => {
   });
 });
 
-describe('garmin_activities is read-only', () => {
-  it('has no writable or required fields — a mutation can never create/update it', () => {
-    expect(SYNC_REGISTRY.garmin_activities.writable).toEqual([]);
-    expect(SYNC_REGISTRY.garmin_activities.required).toEqual([]);
+describe('every registered table is writable (#1200)', () => {
+  it('no entry is left without writable fields — the read-only shape is gone with Garmin', () => {
+    for (const name of SYNC_TABLES) {
+      expect(SYNC_REGISTRY[name].writable.length, name).toBeGreaterThan(0);
+    }
   });
 
-  it('writableFields strips every field, even ones a client might send', () => {
-    expect(
-      writableFields('garmin_activities', { name: 'Lauf', distanceMeters: 5000 }),
-    ).toEqual({});
-  });
-
-  it('is flagged readOnly with a non-empty readable projection for pull', () => {
-    expect(SYNC_REGISTRY.garmin_activities.readOnly).toBe(true);
-    expect(SYNC_REGISTRY.garmin_activities.readable.length).toBeGreaterThan(0);
+  it('writableFields still strips a field no entry declares', () => {
+    expect(writableFields('tasks', { title: 'Lauf', garminActivityId: 42 })).toEqual({
+      title: 'Lauf',
+    });
   });
 });
 

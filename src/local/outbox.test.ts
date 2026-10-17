@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   compareOutboxOrder,
-  mutate,
   nextOutboxSeq,
   overSyncErrorThreshold,
   sortByOrder,
@@ -57,16 +56,6 @@ describe('overSyncErrorThreshold', () => {
 
   it('is true if any entry in a mixed queue is over the threshold', () => {
     expect(overSyncErrorThreshold([entry(0), entry(SYNC_ERROR_THRESHOLD + 3)])).toBe(true);
-  });
-});
-
-describe('mutate on a read-only table (ADR-0011)', () => {
-  it('throws before ever touching IndexedDB', async () => {
-    // Mirrors the server-side rejection in push/route.ts — the client should see
-    // this at build time, not after a round trip that gets rejected anyway.
-    await expect(mutate({ table: 'garmin_activities', op: 'upsert', payload: {} })).rejects.toThrow(
-      /read-only/,
-    );
   });
 });
 

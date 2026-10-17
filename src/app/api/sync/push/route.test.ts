@@ -1,9 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mutation } from '@/local/types';
 
+const SESSION_USER = {
+  userId: '00000000-0000-0000-0000-0000000000aa',
+  role: 'user' as const,
+  sessionId: 'session-1',
+  credentialId: 'cred-1',
+  deviceId: null,
+  lastSeenAt: null,
+  blockedAt: null,
+};
 vi.mock('@/auth/session', () => ({
-  requireOwner: vi.fn().mockResolvedValue('owner-id'),
+  requireUser: vi.fn().mockResolvedValue(SESSION_USER),
   UnauthorizedError: class UnauthorizedError extends Error {},
+  AccountBlockedError: class AccountBlockedError extends Error {},
 }));
 
 const insertValues = vi.fn().mockResolvedValue(undefined);
@@ -103,9 +113,12 @@ describe('POST /api/sync/push', () => {
     }
   });
 
-  it('rejects a mutation on a read-only table (ADR-0011) without touching the DB', async () => {
+  it('rejects a mutation on a table that is not in SYNC_TABLES without touching the DB (#1200)', async () => {
     const { POST } = await import('./route');
-    const mutation: Mutation = {
+    // `garmin_activities` left SYNC_TABLES with the Garmin removal. An old client
+    // still holding such an outbox entry must be turned away at the door, not
+    // crash the batch it travelled with.
+    const mutation = {
       id: 'garmin-1',
       table: 'garmin_activities',
       rowId: 'row-garmin-1',
@@ -113,14 +126,16 @@ describe('POST /api/sync/push', () => {
       payload: { name: 'Fälschung' },
       updatedAt: new Date().toISOString(),
       baseSeq: null,
-    };
+    } as unknown as Mutation;
 
     const response = await POST(makeRequest([mutation]));
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.applied).toEqual([]);
-    expect(body.rejected).toEqual([{ mutationId: 'garmin-1', reason: 'read-only', missing: [] }]);
+    expect(body.rejected).toEqual([
+      { mutationId: 'garmin-1', reason: 'malformed', missing: ['table'] },
+    ]);
     expect(insertValues).not.toHaveBeenCalled();
     expect(updateWhere).not.toHaveBeenCalled();
   });

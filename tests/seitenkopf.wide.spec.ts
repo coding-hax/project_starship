@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   FIXED_NOW,
@@ -6,7 +5,6 @@ import {
   openMeteoForecastBody,
   registerPasskey,
   resetAppData,
-  withDb,
 } from './helpers';
 
 /**
@@ -26,8 +24,6 @@ import {
  */
 
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
-const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
-const SYNC_COUNTERS = { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 };
 const FORECAST_WEEK = [
   '2026-07-15',
   '2026-07-16',
@@ -41,9 +37,8 @@ const PASSPHRASE = 'Seitenkopf-1117-Passphrase';
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
-  // /uebersicht und /aktivitaeten lösen beim Laden echte Netzaufrufe aus, die
-  // ungemockt als Konsolenfehler/Dev-Overlay im DOM landen (wie seitenkopf.spec.ts).
-  await page.route(GARMIN_SYNC_PATTERN, (route) => route.fulfill({ json: SYNC_COUNTERS }));
+  // /uebersicht löst beim Laden einen echten Netzaufruf aus, der ungemockt als
+  // Konsolenfehler/Dev-Overlay im DOM landet (wie seitenkopf.spec.ts).
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
       json: openMeteoForecastBody({
@@ -59,26 +54,6 @@ async function seedTask(page: Page, payload: Record<string, unknown>): Promise<s
   return page.evaluate(
     (p) => window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: p }),
     payload,
-  );
-}
-
-/** Trimmed one-off of seitenkopf.spec.ts's insertGarminActivity — nur genug
- * Bestand, damit /aktivitaeten aus dem Leerzustand in die befüllte Kopfzeile
- * (Augenbraue „Letzte 30 Tage" + Zusatz-Slot-Chip) wechselt. */
-async function insertActivity(): Promise<void> {
-  const track = { n: 3, hr: [140, 150, 145], speed: [2.6, 2.9, 2.7], elevation: [60, 65, 61] };
-  await withDb((client) =>
-    client.query(
-      `INSERT INTO garmin_activities
-        (id, updated_at, deleted_at, synced_at, sync_seq, garmin_activity_id, activity_type, name,
-         started_at, distance_meters, duration_seconds, elapsed_seconds, elevation_gain, elevation_loss,
-         average_hr, max_hr, average_speed, calories, track, map_image, fetched_at)
-       VALUES
-        ($1, now(), NULL, now(), nextval('sync_seq'), $2, 'running', 'Breite-Lauf',
-         '2026-07-20T06:30:00Z', 5000, 1750, 1810, 120, 118,
-         150, 178, 2.8, 400, $3, NULL, now())`,
-      [randomUUID(), Math.floor(Math.random() * 1_000_000_000), JSON.stringify(track)],
-    ),
   );
 }
 
@@ -172,7 +147,6 @@ test('AK1/AK2/AK5: Aufgaben, Routinen und Aktivitäten laufen in einer Zeile, b�
   await installClockAt(page, FIXED_NOW);
   await registerPasskey(page, '/aufgaben');
   await seedTask(page, { title: 'Breite Aufgabe', dueAt: null });
-  await insertActivity();
 
   const cases: Array<{
     path: string;
@@ -190,12 +164,6 @@ test('AK1/AK2/AK5: Aufgaben, Routinen und Aktivitäten laufen in einer Zeile, b�
       path: '/routinen',
       eyebrow: (p) => p.locator("[data-ground='routinen'] .page-head__eyebrow"),
       titleRow: (p) => p.locator("[data-ground='routinen'] .page-face-row"),
-    },
-    {
-      path: '/aktivitaeten',
-      eyebrow: (p) => p.locator("[data-module='aktivitaeten'] .page-head__eyebrow"),
-      titleRow: (p) => p.locator("[data-module='aktivitaeten'] .page-face-row"),
-      extra: (p) => p.locator("[data-module='aktivitaeten'] .page-head__extra"),
     },
   ];
 

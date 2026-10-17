@@ -36,7 +36,7 @@ Die UI spricht **niemals** direkt mit der API. Jede Mutation:
 
 ### Konfliktauflösung
 
-Ein Nutzer, maximal zwei bis drei Geräte → **kein CRDT nötig.**
+Pro Konto ein Mensch mit zwei bis drei Geräten → **kein CRDT nötig.**
 **Neueste Ankunft am Server gewinnt** — eine globale, server-monotone Sequenz
 (`sync_seq`), nicht die Client-Uhr, entscheidet einen Konflikt (ADR-0008).
 `updated_at` bleibt Anzeige/Tiebreaker, ist aber nicht mehr Autorität: ein
@@ -48,6 +48,10 @@ ein Feld-Update immer, in beiden Ankunftsreihenfolgen (`src/local/conflict.ts`).
 
 ### Pflicht-Spalten für jede synchronisierte Tabelle
 
+Die Sequenz `sync_seq` bleibt **eine** für alle Konten (ADR-0031): der Pull filtert
+auf `user_id`, ein Konto sieht also Lücken in der Nummernfolge. Das ist harmlos,
+weil der Cursor nur „höher als" vergleicht und nie Lückenlosigkeit voraussetzt.
+
 | Spalte        | Zweck                                                                                      |
 | ------------- | ------------------------------------------------------------------------------------------ |
 | `id` (UUIDv7) | clientseitig erzeugt, damit Offline-Anlage ohne Server-Roundtrip geht; zeitlich sortierbar |
@@ -55,6 +59,7 @@ ein Feld-Update immer, in beiden Ankunftsreihenfolgen (`src/local/conflict.ts`).
 | `deleted_at`  | **Soft Delete** — harte Löschung würde beim Sync „wiederauferstehen"                       |
 | `synced_at`   | lokal: wurde erfolgreich übertragen                                                        |
 | `sync_seq`    | server-monotone Ankunftsreihenfolge, die Konflikt-Autorität (ADR-0008)                     |
+| `user_id`     | das besitzende Konto (ADR-0031) — Teil des Primärschlüssels, nicht nur Filterspalte        |
 
 ### Down-Migrationen
 
@@ -82,14 +87,10 @@ habits          id, name, schedule (daily|weekly|custom), color, emoji, archived
                 ← `color` bleibt in Schema/Daten stehen, wird seit #1101 aber nicht mehr gelesen
 habit_logs      id, habit_id, log_date, done, ...
 sync_state      key, value            ← letzter Pull-Cursor (sync_seq) etc.
-garmin_activities  id, garmin_activity_id, activity_type, started_at, distance_meters,
-                   duration_seconds, elevation_gain/loss, average_hr, max_hr,
-                   average_speed, calories, track, map_image, ...  ← read-only (ADR-0011)
-garmin_tokens      id, kind, token, expires_at, ...  ← nie synchronisiert (ADR-0011)
 ```
 
-Alle Tabellen tragen die fünf Pflicht-Spalten oben, außer `garmin_tokens` — wie die
-Auth-Tabellen unten synchronisiert es nie und trägt deshalb keine.
+Alle Tabellen tragen die fünf Pflicht-Spalten oben. Die Auth-Tabellen
+synchronisieren nie und tragen deshalb keine.
 Es gibt **keine** Felder für externe Kalender (`external_uid`, `etag`, `calendar_links`) —
 die App ist die alleinige Wahrheit für ihre Termine (siehe ADR-0002).
 
@@ -127,24 +128,18 @@ oder Google (ADR-0002). Konsequenzen für die Architektur:
 Der GitHub-Actions-Cron läuft für terminierte Web-Push-Erinnerungen (`reminders.yml`);
 ein Backup-Cron ist (Stand heute) nicht angelegt, siehe unten.
 
-## Garmin: read-only Server-Origin-Daten
-
-Aktivitäten (ADR-0011) sind die erste Tabelle, die der Sync **liest, aber nie
-schreibt**: `GET /api/garmin-sync` (GitHub-Actions-Cron, Shared Secret) holt sie von
-`connectapi.garmin.com`, legt sie in Postgres ab, von dort laufen sie über den
-normalen Pull wie jede andere Tabelle. Der `SYNC_REGISTRY`-Eintrag trägt
-`readOnly: true` und eine eigene `readable`-Feldliste (statt `writable`); `pull`
-projiziert über `readable ?? writable`, `push` weist jede Mutation auf eine
-read-only-Tabelle vor jedem DB-Zugriff ab (`src/local/types.ts`:
-`isReadOnlyTable`). `garmin_tokens` läuft nie durch den Sync — wie die Auth-Tabellen
-kein Registry-Eintrag, kein `syncColumns`.
-
 ## Security
 
 - **Auth:** Passkey (WebAuthn). Recovery-Code als Fallback.
 - **Session:** httpOnly, Secure, SameSite=Lax, lange Laufzeit (Ziel: nie manuell einloggen).
-- **Autorisierung:** Single-User. Jede API-Route prüft die Session gegen `OWNER_USER_ID` aus der Env.
-  Es gibt keinen zweiten Pfad in die Daten.
+- **Autorisierung:** Mehrbenutzer seit ADR-0031. `requireUser()` liest die `user_id`
+  **aus der Sitzungszeile** — keine Env-Variable, kein zweiter Pfad in die Daten.
+  Ohne Sitzung `401`, bei gesetztem `users.blocked_at` `403 blocked` (der Client muss
+  Sperre und Abmeldung unterscheiden können).
+- **Mandantentrennung:** jede synchronisierte Tabelle trägt `user_id` und hat
+  `(user_id, id)` als Primärschlüssel; Referenzen zwischen ihnen sind zusammengesetzt.
+  Eine Zeile, die auf ein fremdes Konto zeigt, scheitert damit **an der Datenbank**,
+  nicht an Sorgfalt im Code. `scripts/check-tenant-isolation.sh` ist Required Check.
 - **Rate Limiting** auf Auth- und Sync-Endpoints.
 - **Header:** CSP (strikt, keine Inline-Skripte), HSTS, `X-Content-Type-Options`, Referrer-Policy.
 - **Secrets** ausschließlich in Vercel-Env-Variablen. Nie im Repo, nie im Client-Bundle.

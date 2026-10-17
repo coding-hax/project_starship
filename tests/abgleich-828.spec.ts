@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { parseForecast } from '@/features/weather/forecast';
 import {
@@ -7,7 +6,6 @@ import {
   openMeteoForecastBody,
   registerPasskey,
   resetAppData,
-  withDb,
 } from './helpers';
 
 /**
@@ -19,9 +17,7 @@ import {
  * je eigener Test (kein `.skip`/`.only`, DoD Dark Mode + reduced-motion).
  */
 
-const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
-const SYNC_COUNTERS = { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 };
 // Umschließt FIXED_NOW (Samstag, 2026-07-18) — für den Wetter-Kopf unten
 // (issue #870 T3), der eine echte Vorhersage statt der leeren beforeEach-
 // Antwort braucht (dieselbe Woche wie seitenkopf.spec.ts's FORECAST_WEEK).
@@ -37,7 +33,6 @@ const FORECAST_WEEK = [
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
-  await page.route(GARMIN_SYNC_PATTERN, (route) => route.fulfill({ json: SYNC_COUNTERS }));
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({ json: openMeteoForecastBody({ dates: [], tempsMax: [], tempsMin: [] }) }),
   );
@@ -61,29 +56,6 @@ async function seedHabitLog(page: Page, payload: Record<string, unknown>): Promi
   return page.evaluate(
     (p) => window.__starship.mutate({ table: 'habit_logs', op: 'upsert', payload: p }),
     payload,
-  );
-}
-
-/** Trimmed one-off of seitenkopf.spec.ts's insertGarminActivity. */
-async function insertGarminActivity(): Promise<void> {
-  const track = {
-    n: 5,
-    hr: [140, 150, 160, 155, 148],
-    speed: [2.6, 2.9, 3.1, 2.8, 2.7],
-    elevation: [60, 65, 72, 68, 61],
-  };
-  await withDb((client) =>
-    client.query(
-      `INSERT INTO garmin_activities
-        (id, updated_at, deleted_at, synced_at, sync_seq, garmin_activity_id, activity_type, name,
-         started_at, distance_meters, duration_seconds, elapsed_seconds, elevation_gain, elevation_loss,
-         average_hr, max_hr, average_speed, calories, track, map_image, fetched_at)
-       VALUES
-        ($1, now(), NULL, now(), nextval('sync_seq'), $2, 'running', 'Sonde-Lauf',
-         '2026-07-20T06:30:00Z', 5000, 1750, 1810, 120, 118,
-         150, 178, 2.8, 400, $3, NULL, now())`,
-      [randomUUID(), Math.floor(Math.random() * 1_000_000_000), JSON.stringify(track)],
-    ),
   );
 }
 
@@ -112,18 +84,6 @@ for (const mode of MODES) {
     await expect(page.getByText('Danach nichts mehr geplant.')).toBeInViewport();
     // issue #870 (T3): Augenbraue „N offen · M erledigt" (T1 von #861).
     await expect(page.locator('[data-ground="aufgaben"] .page-head__eyebrow')).toBeInViewport();
-
-    // Aktivitäten: die drei Kurven (Herzfrequenz/Pace/Höhenprofil).
-    await insertGarminActivity();
-    await page.goto('/aktivitaeten');
-    const curves = page.locator('.activity-chart__svg path');
-    await expect(curves).toHaveCount(3);
-    for (let i = 0; i < 3; i += 1) {
-      await expect(curves.nth(i)).toBeInViewport();
-    }
-    // issue #870 (T3): Augenbraue „Letzte 30 Tage" + Distanz-Titel (T2a von #861, #897).
-    await expect(page.locator('[data-module="aktivitaeten"] .page-head__eyebrow')).toBeInViewport();
-    await expect(page.locator('[data-module="aktivitaeten"] h1')).toBeInViewport();
 
     // Routinen-Zwischenstand lebt in der Übersicht-Habit-Sektion + Fortschrittsring.
     const habitId = await seedHabit(page, {

@@ -1,6 +1,13 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { PULL_PAGE_LIMIT } from '@/local/conflict';
-import { openSecondDevice, registerPasskey, resetAppData, settleJournalHabitBoot, withDb } from './helpers';
+import {
+  currentAccountId,
+  openSecondDevice,
+  registerPasskey,
+  resetAppData,
+  settleJournalHabitBoot,
+  withDb,
+} from './helpers';
 
 /**
  * issue #518 (Weg B aus #477): the journal_keys first-setup race. Two devices
@@ -306,12 +313,13 @@ test.describe('Journal-Setup erst nach vollständig geprüftem Konto (#1135)', (
   /** Bulk-seeds `count` task rows directly in Postgres, each with its own sync_seq —
    *  local copy of sync.spec.ts's helper (that file stays untouched). */
   async function seedTasks(count: number, titlePrefix: string) {
+    const userId = await currentAccountId();
     await withDb((c) =>
       c.query(
-        `INSERT INTO tasks (id, title, sync_seq)
-         SELECT gen_random_uuid(), $1 || g, nextval('sync_seq')
+        `INSERT INTO tasks (user_id, id, title, sync_seq)
+         SELECT $3, gen_random_uuid(), $1 || g, nextval('sync_seq')
          FROM generate_series(1, $2) AS g`,
-        [titlePrefix, count],
+        [titlePrefix, count, userId],
       ),
     );
   }

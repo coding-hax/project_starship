@@ -16,7 +16,6 @@ declare global {
 }
 
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
-const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
 
 // Registered via addInitScript (not appendChild-ed DOM state, so the "document.head
 // doesn't exist yet" trap doesn't apply) — fires again on every navigation within
@@ -34,14 +33,9 @@ test.describe('angemeldet', () => {
   test.beforeEach(async ({ page }) => {
     await resetAppData();
     // Same leak as navigation.prod.spec.ts: /uebersicht fires a real open-meteo
-    // fetch, and /aktivitaeten a real garmin-sync one — both must be mocked or
+    // fetch that must be mocked or
     // they hang/pollute this spec, which has nothing to do with either.
     await page.route(OPEN_METEO_PATTERN, (route) => route.abort('failed'));
-    await page.route(GARMIN_SYNC_PATTERN, (route) =>
-      route.fulfill({
-        json: { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 },
-      }),
-    );
     await collectViolations(page);
     await registerPasskey(page);
   });
@@ -137,7 +131,7 @@ test.describe('angemeldet', () => {
       .toBe(true);
     expect(await page.evaluate(() => window.__violations)).toEqual([]);
 
-    for (const path of ['/aufgaben', '/kalender', '/routinen', '/journal', '/aktivitaeten', '/einstellungen']) {
+    for (const path of ['/aufgaben', '/kalender', '/routinen', '/journal', '/einstellungen']) {
       await page.goto(path);
       expect(await page.evaluate(() => window.__violations)).toEqual([]);
     }

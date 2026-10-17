@@ -26,8 +26,8 @@ import './overview-ready.css';
  * The fix is not a skeleton per block. Ring, Streak-Karte and Monatsstreifen
  * deliberately render *nothing* once loaded when there is nothing to show (ruhiger
  * Leerzustand statt „0 von 0") — reserving height for them means giving it back,
- * which shifts just as hard in the other direction (`activity-month-strip.tsx`
- * does exactly that today: skeleton, then `return null` at zero activities).
+ * which shifts just as hard in the other direction (a section that renders a
+ * skeleton and then `return null` once it knows it has nothing to show).
  *
  * So instead: hold the content until every registered block has answered once,
  * then show all of it in a single paint. Content that appears together *below*

@@ -1,6 +1,15 @@
 # ADR-0011: Garmin — Bootstrap im Browser, Betrieb per Token, kein Anmeldecode im Server
 
-Status: **angenommen** · Datum: 2026-07-26
+Status: **abgelöst** (durch ADR-0031, #1200) · Datum: 2026-07-26
+
+> **Abgelöst am 17.10.2026.** Das Aktivitäten-Modul wurde mit #1200 ersatzlos
+> ausgebaut: `garmin_tokens`, `garmin_activities`, `/api/garmin-sync`, der
+> nächtliche Cron und `src/features/garmin|activities/` sind weg. Damit entfällt
+> die einzige read-only Server-Origin-Tabelle, die dieses ADR eingeführt hat —
+> `READ_ONLY_TABLES` (`src/local/types.ts`) ist seitdem leer, bleibt aber als
+> Registrierungsstelle für eine künftige read-only Tabelle stehen. Der Text
+> unten bleibt als Begründung stehen, warum der Weg damals so aussah; er
+> beschreibt keinen Zustand des Codes mehr.
 
 ## Kontext
 

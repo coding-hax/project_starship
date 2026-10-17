@@ -1,13 +1,24 @@
 import { eq, sql } from 'drizzle-orm';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { uuidv7 } from 'uuidv7';
 import { db } from '@/db';
-import { habitLogs, habits, tasks } from '@/db/schema';
+import { habitLogs, habits, tasks, users } from '@/db/schema';
 import { PULL_PAGE_LIMIT } from '@/local/conflict';
 import { readChangesSince } from './read-changes-since';
 
+const SESSION_USER = {
+  userId: '00000000-0000-0000-0000-0000000000aa',
+  role: 'user' as const,
+  sessionId: 'session-1',
+  credentialId: 'cred-1',
+  deviceId: null,
+  lastSeenAt: null,
+  blockedAt: null,
+};
 vi.mock('@/auth/session', () => ({
-  requireOwner: vi.fn().mockResolvedValue('owner-id'),
+  requireUser: vi.fn().mockResolvedValue(SESSION_USER),
   UnauthorizedError: class UnauthorizedError extends Error {},
+  AccountBlockedError: class AccountBlockedError extends Error {},
 }));
 
 /**
@@ -83,6 +94,14 @@ describe('pull snapshot consistency (fund F1, #472)', () => {
   const createdHabitIds: string[] = [];
   const createdTaskIds: string[] = [];
   const createdLogIds: string[] = [];
+  // Every synchronised row needs an owning account since #1200; this suite is
+  // about snapshot isolation, so it gets one throwaway account and stays there.
+  let userId: string;
+
+  beforeEach(async () => {
+    userId = uuidv7();
+    await db.insert(users).values({ id: userId });
+  });
 
   afterEach(async () => {
     for (const id of createdLogIds.splice(0)) {
@@ -94,6 +113,7 @@ describe('pull snapshot consistency (fund F1, #472)', () => {
     for (const id of createdHabitIds.splice(0)) {
       await db.delete(habits).where(eq(habits.id, id));
     }
+    await db.delete(users).where(eq(users.id, userId));
   });
 
   /**
@@ -105,7 +125,13 @@ describe('pull snapshot consistency (fund F1, #472)', () => {
     const habitId = crypto.randomUUID();
     const [habitRow] = await db
       .insert(habits)
-      .values({ id: habitId, name: 'Testgewohnheit', schedule: 'daily', syncSeq: sql`nextval('sync_seq')` })
+      .values({
+        id: habitId,
+        userId,
+        name: 'Testgewohnheit',
+        schedule: 'daily',
+        syncSeq: sql`nextval('sync_seq')`,
+      })
       .returning({ syncSeq: habits.syncSeq });
     createdHabitIds.push(habitId);
 
@@ -115,7 +141,7 @@ describe('pull snapshot consistency (fund F1, #472)', () => {
       const taskId = crypto.randomUUID();
       const [taskRow] = await db
         .insert(tasks)
-        .values({ id: taskId, title: 'Testaufgabe', syncSeq: sql`nextval('sync_seq')` })
+        .values({ id: taskId, userId, title: 'Testaufgabe', syncSeq: sql`nextval('sync_seq')` })
         .returning({ syncSeq: tasks.syncSeq });
       createdTaskIds.push(taskId);
 
@@ -124,6 +150,7 @@ describe('pull snapshot consistency (fund F1, #472)', () => {
         .insert(habitLogs)
         .values({
           id: logId,
+          userId,
           habitId,
           logDate: '2026-08-03',
           syncSeq: sql`nextval('sync_seq')`,
@@ -147,7 +174,7 @@ describe('pull snapshot consistency (fund F1, #472)', () => {
       pushed = await commitPush();
     });
 
-    const { changes } = await readChangesSince(executor, since);
+    const { changes } = await readChangesSince(executor, since, userId);
 
     expect(pushed).toBeDefined();
     const hasTask = changes.some((c) => c.table === 'tasks' && c.syncSeq === pushed?.taskSeq);
@@ -169,7 +196,7 @@ describe('pull snapshot consistency (fund F1, #472)', () => {
         const executor = pauseBeforeTable(tx, habitLogs, async () => {
           pushed = await commitPush();
         });
-        return readChangesSince(executor, since);
+        return readChangesSince(executor, since, userId);
       },
       { isolationLevel: 'repeatable read', accessMode: 'read only' },
     );
@@ -216,6 +243,11 @@ describe('pull snapshot consistency (fund F1, #472)', () => {
 });
 
 describe('readChangesSince pagination (fund F5, #478)', () => {
+  // The executor below is a stub that ignores its WHERE, so the account id only
+  // has to satisfy the signature — the tenant filter itself is proven against a
+  // real database in tests/mandant.spec.ts.
+  const FAKE_USER_ID = '00000000-0000-0000-0000-0000000000f5';
+
   // A fake executor, not `db` — the per-table `LIMIT` is capped correctness the
   // query builder is trusted for (drizzle's own contract); what this suite verifies
   // is `readChangesSince`'s own aggregation: does it notice a table came back full.
@@ -247,7 +279,7 @@ describe('readChangesSince pagination (fund F5, #478)', () => {
     const rows = Array.from({ length: PULL_PAGE_LIMIT }, (_, i) => fakeRow(i + 1));
     const executor = fakeExecutor(new Map([[tasks, rows]]));
 
-    const { changes, truncated } = await readChangesSince(executor, 0);
+    const { changes, truncated } = await readChangesSince(executor, 0, FAKE_USER_ID);
 
     expect(changes).toHaveLength(PULL_PAGE_LIMIT);
     expect(truncated).toBe(true);
@@ -257,7 +289,7 @@ describe('readChangesSince pagination (fund F5, #478)', () => {
     const rows = Array.from({ length: PULL_PAGE_LIMIT - 1 }, (_, i) => fakeRow(i + 1));
     const executor = fakeExecutor(new Map([[tasks, rows]]));
 
-    const { truncated } = await readChangesSince(executor, 0);
+    const { truncated } = await readChangesSince(executor, 0, FAKE_USER_ID);
 
     expect(truncated).toBe(false);
   });

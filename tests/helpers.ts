@@ -5,6 +5,8 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/server';
 import { Client } from 'pg';
+import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
+import { JOURNAL_KEYS_ROW_ID } from '@/features/journal/journal-keys';
 import type { WeatherDay } from '@/local/dexie';
 import { AUTH_STATE } from './run-lock';
 
@@ -260,18 +262,173 @@ export async function withDb<T>(fn: (client: Client) => Promise<T>): Promise<T> 
 export async function createThrowawaySession(
   credentialId?: string,
   deviceId?: string,
+  userId?: string,
 ): Promise<{ token: string; tokenHash: string }> {
   const token = randomBytes(32).toString('base64url');
   const tokenHash = createHash('sha256').update(token).digest('hex');
   const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+  // Every session belongs to an account since #1200, and which one is not a
+  // choice: a session bound to a passkey belongs to **that passkey's** account.
+  // Deriving it from anywhere else breaks the login coalescing (#857/#1102),
+  // which matches on `(user_id, credential_id)` — a seeded session filed under
+  // the wrong account simply survives the login that was supposed to absorb it.
+  // Unbound and without an explicit account it joins the admin one; before the
+  // first ceremony (global-setup's cold-route warm-up) there is none yet, so one
+  // is minted: the probe needs a cookie that survives `requireUser()`, and that
+  // account owns nothing.
+  const account =
+    userId ?? (credentialId ? await accountOfCredential(credentialId) : await ensureSessionAccount());
   await withDb((client) =>
     client.query(
-      'INSERT INTO sessions (id, token_hash, expires_at, credential_id, device_id) ' +
-        'VALUES ($1, $2, $3, $4, $5)',
-      [randomUUID(), tokenHash, expiresAt, credentialId ?? null, deviceId ?? null],
+      'INSERT INTO sessions (id, user_id, token_hash, expires_at, credential_id, device_id) ' +
+        'VALUES ($1, $2, $3, $4, $5, $6)',
+      [randomUUID(), account, tokenHash, expiresAt, credentialId ?? null, deviceId ?? null],
     ),
   );
   return { token, tokenHash };
+}
+
+/** The account a passkey belongs to. Throws on an unknown id rather than guessing. */
+async function accountOfCredential(credentialId: string): Promise<string> {
+  const result = await withDb((client) =>
+    client.query('SELECT user_id FROM credentials WHERE id = $1', [credentialId]),
+  );
+  if (result.rows.length === 0) {
+    throw new Error(`Kein Passkey mit der id ${credentialId}.`);
+  }
+  return result.rows[0].user_id as string;
+}
+
+/**
+ * The account the shared `AUTH_STATE` session belongs to: **the admin one**.
+ *
+ * `register/verify` makes the first account on the installation `admin`
+ * (ADR-0031), and the e2e suite only ever runs that ceremony once — so "the
+ * admin account" names it exactly, and keeps naming it through the two things
+ * that would break a narrower rule:
+ *   - `deleteAllCredentials()` (auth-geraete.spec.ts) empties `credentials`
+ *     without touching `users`, so resolving through the passkey would come up
+ *     empty mid-suite;
+ *   - `global-setup`'s warm-up and `createOtherAccount()` both add `user`
+ *     accounts, so "oldest row in `users`" would hand one of those back.
+ *
+ * Throws rather than inventing one: a spec reaching for this before
+ * `registerPasskey()` is asking the wrong question, and a silently invented
+ * account would make its assertions vacuous.
+ */
+export async function currentAccountId(): Promise<string> {
+  const result = await withDb((client) =>
+    client.query("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1"),
+  );
+  if (result.rows.length === 0) {
+    throw new Error('Kein Admin-Konto — registerPasskey() muss vorher gelaufen sein.');
+  }
+  return result.rows[0].id as string;
+}
+
+/**
+ * The account a throwaway session may hang off: the admin one if a ceremony has
+ * already run, otherwise a fresh, credential-less `user` account for
+ * `global-setup`'s cold-route probe. Only `createThrowawaySession` uses it —
+ * every assertion goes through `currentAccountId()`, which deliberately refuses
+ * to invent anything.
+ */
+async function ensureSessionAccount(): Promise<string> {
+  const existing = await withDb((client) =>
+    client.query("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1"),
+  );
+  if (existing.rows.length > 0) return existing.rows[0].id as string;
+
+  const created = await withDb((client) =>
+    client.query(
+      "INSERT INTO users (id, role, display_name) VALUES ($1, 'user', 'E2E-Aufwärmkonto') RETURNING id",
+      [randomUUID()],
+    ),
+  );
+  return created.rows[0].id as string;
+}
+
+/**
+ * A second, independent account with its own rows — the counterpart every
+ * tenant-isolation assertion needs (#1200). Seeds one row in every
+ * synchronised table, including both checked-in fixed ids
+ * (`JOURNAL_HABIT_ID`, `JOURNAL_KEYS_ROW_ID`), because those are exactly the
+ * ones that used to collide across accounts.
+ */
+export async function createOtherAccount(label = 'Fremdkonto'): Promise<{
+  userId: string;
+  titles: { task: string; habit: string; event: string; journalCiphertext: string };
+}> {
+  const userId = randomUUID();
+  const titles = {
+    task: `${label}-Aufgabe`,
+    habit: `${label}-Routine`,
+    event: `${label}-Termin`,
+    journalCiphertext: `${label}-Chiffrat`,
+  };
+
+  await withDb(async (client) => {
+    await client.query('INSERT INTO users (id, role, display_name) VALUES ($1, $2, $3)', [
+      userId,
+      'user',
+      label,
+    ]);
+    const seq = "nextval('sync_seq')";
+    const synced = (table: string, cols: string, values: string, params: unknown[]) =>
+      client.query(
+        `INSERT INTO ${table} (user_id, id, updated_at, deleted_at, synced_at, sync_seq, ${cols})
+         VALUES ($1, $2, now(), NULL, now(), ${seq}, ${values})`,
+        [userId, randomUUID(), ...params],
+      );
+
+    await synced('sync_state', 'key, value', '$3, $4', ['cursor', JSON.stringify(1)]);
+    await synced('tasks', 'title', '$3', [titles.task]);
+    await client.query(
+      `INSERT INTO habits (user_id, id, updated_at, synced_at, sync_seq, name, schedule)
+       VALUES ($1, $2, now(), now(), ${seq}, $3, 'daily')`,
+      [userId, JOURNAL_HABIT_ID, titles.habit],
+    );
+    await synced('habit_logs', 'habit_id, log_date', '$3, $4', [JOURNAL_HABIT_ID, '2026-07-17']);
+    await synced('reminder_prefs', 'kind, enabled, times', '$3, true, $4', [
+      'tasks-due',
+      JSON.stringify(['06:00']),
+    ]);
+    await synced('category_colors', 'category, color', '$3, $4', ['arbeit', '--swatch-rose']);
+    await synced('journal_entries', 'entry_date, ciphertext, nonce', '$3, $4, $5', [
+      '2026-07-17',
+      titles.journalCiphertext,
+      'nonce',
+    ]);
+    await client.query(
+      `INSERT INTO journal_keys (user_id, id, updated_at, synced_at, sync_seq, envelope)
+       VALUES ($1, $2, now(), now(), ${seq}, '{}'::jsonb)`,
+      [userId, JOURNAL_KEYS_ROW_ID],
+    );
+    const event = randomUUID();
+    await client.query(
+      `INSERT INTO events (user_id, id, updated_at, synced_at, sync_seq, title)
+       VALUES ($1, $2, now(), now(), ${seq}, $3)`,
+      [userId, event, titles.event],
+    );
+    await synced('event_exceptions', 'event_id, original_date', '$3, $4', [event, '2026-07-20']);
+  });
+
+  return { userId, titles };
+}
+
+/** Locks/unlocks an account — the server side of the 403 path (#1200 AK8). */
+export async function setAccountBlocked(userId: string, blocked: boolean): Promise<void> {
+  await withDb((client) =>
+    client.query('UPDATE users SET blocked_at = $2 WHERE id = $1', [
+      userId,
+      blocked ? new Date() : null,
+    ]),
+  );
+}
+
+/** Removes an account and, through ON DELETE CASCADE, everything that was its own. */
+export async function deleteAccount(userId: string): Promise<void> {
+  await withDb((client) => client.query('DELETE FROM users WHERE id = $1', [userId]));
 }
 
 export async function sessionRowExists(tokenHash: string): Promise<boolean> {
@@ -289,12 +446,14 @@ export async function sessionRowExists(tokenHash: string): Promise<boolean> {
  */
 export async function createThrowawayCredential({
   label,
-}: { label?: string } = {}): Promise<string> {
+  userId,
+}: { label?: string; userId?: string } = {}): Promise<string> {
   const id = randomUUID();
+  const account = userId ?? (await currentAccountId());
   await withDb((client) =>
     client.query(
-      'INSERT INTO credentials (id, credential_id, public_key, label) VALUES ($1, $2, $3, $4)',
-      [id, randomUUID(), randomBytes(32).toString('base64url'), label ?? null],
+      'INSERT INTO credentials (id, user_id, credential_id, public_key, label) VALUES ($1, $2, $3, $4, $5)',
+      [id, account, randomUUID(), randomBytes(32).toString('base64url'), label ?? null],
     ),
   );
   return id;
@@ -317,7 +476,7 @@ export async function credentialRowExists(id: string): Promise<boolean> {
 export async function resetAppData() {
   await withDb(async (client) => {
     await client.query(
-      'DELETE FROM sync_state; DELETE FROM tasks; DELETE FROM garmin_activities; ' +
+      'DELETE FROM sync_state; DELETE FROM tasks; ' +
         'DELETE FROM reminder_prefs; DELETE FROM category_colors; ' +
         'DELETE FROM journal_entries; DELETE FROM journal_keys; ' +
         // habit_logs/habit_freezes first — both reference habits via a foreign key.
@@ -325,6 +484,12 @@ export async function resetAppData() {
         // event_exceptions first — it references events via a foreign key (issue #553).
         'DELETE FROM event_exceptions; DELETE FROM events;',
     );
+    // Accounts seeded by `createOtherAccount` go too — but never the admin one,
+    // or the shared session would be gone and every following spec would have to
+    // run the ceremony again. `ON DELETE CASCADE` takes their rows with them.
+    // The credential-less warm-up account from `global-setup` is swept here as
+    // well; it owns nothing.
+    await client.query("DELETE FROM users WHERE role <> 'admin'");
   });
 }
 
@@ -358,13 +523,16 @@ export async function resetDatabase() {
         'DELETE FROM auth_rate_limits; ' +
         'DELETE FROM recovery_codes; DELETE FROM sync_state; DELETE FROM tasks; ' +
         'DELETE FROM habit_logs; DELETE FROM habit_freezes; DELETE FROM habits; ' +
-        'DELETE FROM garmin_activities; ' +
-        'DELETE FROM garmin_tokens; DELETE FROM reminder_prefs; DELETE FROM category_colors; ' +
+        'DELETE FROM reminder_prefs; DELETE FROM category_colors; ' +
         'DELETE FROM journal_entries; ' +
         'DELETE FROM journal_keys; ' +
         // event_exceptions first — it references events via a foreign key (issue #553).
         'DELETE FROM event_exceptions; DELETE FROM events;',
     );
+    // Accounts last: every table above hangs off `users` via ON DELETE CASCADE,
+    // so this is belt-and-braces — but it is what makes "truly clean slate"
+    // true again now that an account is a row of its own (#1200).
+    await client.query('DELETE FROM users;');
   });
 }
 
@@ -404,12 +572,13 @@ export async function seedReminderPref(
   enabled: boolean,
   times: string[],
 ): Promise<void> {
+  const userId = await currentAccountId();
   await withDb((client) =>
     client.query(
-      `INSERT INTO reminder_prefs (id, updated_at, deleted_at, synced_at, sync_seq, kind, enabled, times)
-       VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4)
-       ON CONFLICT (kind) DO UPDATE SET enabled = $3, times = $4`,
-      [randomUUID(), kind, enabled, JSON.stringify(times)],
+      `INSERT INTO reminder_prefs (user_id, id, updated_at, deleted_at, synced_at, sync_seq, kind, enabled, times)
+       VALUES ($1, $2, now(), NULL, now(), nextval('sync_seq'), $3, $4, $5)
+       ON CONFLICT (user_id, kind) DO UPDATE SET enabled = $4, times = $5`,
+      [userId, randomUUID(), kind, enabled, JSON.stringify(times)],
     ),
   );
 }
@@ -421,12 +590,13 @@ export async function seedReminderPref(
  * driving the panel's own UI first.
  */
 export async function seedCategoryColor(category: string, color: string): Promise<void> {
+  const userId = await currentAccountId();
   await withDb((client) =>
     client.query(
-      `INSERT INTO category_colors (id, updated_at, deleted_at, synced_at, sync_seq, category, color)
-       VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3)
-       ON CONFLICT (category) DO UPDATE SET color = $3`,
-      [randomUUID(), category, color],
+      `INSERT INTO category_colors (user_id, id, updated_at, deleted_at, synced_at, sync_seq, category, color)
+       VALUES ($1, $2, now(), NULL, now(), nextval('sync_seq'), $3, $4)
+       ON CONFLICT (user_id, category) DO UPDATE SET color = $4`,
+      [userId, randomUUID(), category, color],
     ),
   );
 }
@@ -446,19 +616,20 @@ export async function seedCategoryColor(category: string, color: string): Promis
  * reads `habits` back from Postgres in these specs.
  */
 export async function seedHabitFreeze(habitId: string, freezeDate: string): Promise<void> {
+  const userId = await currentAccountId();
   await withDb((client) =>
     client.query(
-      `INSERT INTO habits (id, sync_seq, name, schedule)
-       VALUES ($1, nextval('sync_seq'), 'Postgres-Restzeile', 'daily')
-       ON CONFLICT (id) DO NOTHING`,
-      [habitId],
+      `INSERT INTO habits (user_id, id, sync_seq, name, schedule)
+       VALUES ($1, $2, nextval('sync_seq'), 'Postgres-Restzeile', 'daily')
+       ON CONFLICT (user_id, id) DO NOTHING`,
+      [userId, habitId],
     ),
   );
   await withDb((client) =>
     client.query(
-      `INSERT INTO habit_freezes (id, updated_at, deleted_at, synced_at, sync_seq, habit_id, freeze_date)
-       VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3)`,
-      [randomUUID(), habitId, freezeDate],
+      `INSERT INTO habit_freezes (user_id, id, updated_at, deleted_at, synced_at, sync_seq, habit_id, freeze_date)
+       VALUES ($1, $2, now(), NULL, now(), nextval('sync_seq'), $3, $4)`,
+      [userId, randomUUID(), habitId, freezeDate],
     ),
   );
 }
@@ -610,7 +781,6 @@ declare global {
           | 'tasks'
           | 'habits'
           | 'habit_logs'
-          | 'garmin_activities'
           | 'reminder_prefs'
           | 'journal_entries'
           | 'journal_keys'

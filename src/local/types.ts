@@ -9,7 +9,6 @@ export const SYNC_TABLES = [
   'tasks',
   'habits',
   'habit_logs',
-  'garmin_activities',
   'reminder_prefs',
   'journal_entries',
   'journal_keys',
@@ -24,15 +23,14 @@ export function isSyncTable(value: unknown): value is SyncTable {
 }
 
 /**
- * Tables the sync engine reads but never writes: server-origin data (ADR-0011).
- * Both `push` (server) and `outbox.mutate()` (client) import from here, so the two
- * sides of the wire contract cannot drift apart on which tables are writable.
+ * Tables the sync engine would read but never write: server-origin data (ADR-0011).
+ * Empty since issue #1200 — Garmin/`garmin_activities`, the only entry there ever
+ * was, was removed outright rather than migrated to `(user_id, id)`. The constant
+ * stays rather than disappearing so a future server-origin table has somewhere to
+ * register; nothing currently reads it (`push`/`outbox.mutate()` have no read-only
+ * branch to gate, since gating on an always-empty list would be dead code).
  */
-export const READ_ONLY_TABLES: readonly SyncTable[] = ['garmin_activities'];
-
-export function isReadOnlyTable(table: SyncTable): boolean {
-  return (READ_ONLY_TABLES as readonly string[]).includes(table);
-}
+export const READ_ONLY_TABLES: readonly SyncTable[] = [];
 
 /**
  * Tables with a natural key beyond `id` (a `uniqueIndex` in schema.ts, see
@@ -41,7 +39,7 @@ export function isReadOnlyTable(table: SyncTable): boolean {
  * logDate)` while offline. Field names are the wire/`data` shape (as in
  * `HabitLogData` above), not the Drizzle column names, so both `push`
  * (server) and `pull` (client) can key off the same map without drifting
- * apart — like `READ_ONLY_TABLES`.
+ * apart.
  *
  * `category_colors` gets one too, unlike `reminder_prefs` (which has the same
  * one-row-per-key shape but relies on the UNIQUE constraint alone): two devices
@@ -259,7 +257,7 @@ export interface PushRejection {
    * `constraint` = rejected by the database itself (unique/FK/…), unhealable like
    * `malformed`, always with an empty `missing`.
    */
-  reason?: 'missing-required' | 'malformed' | 'read-only' | 'constraint';
+  reason?: 'missing-required' | 'malformed' | 'constraint';
   /** NOT NULL columns a create was missing, or the malformed fields' names. */
   missing: string[];
 }

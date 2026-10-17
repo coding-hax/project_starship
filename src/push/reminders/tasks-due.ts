@@ -1,4 +1,4 @@
-import { and, asc, desc, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { tasks, type Task } from '@/db/schema';
 import { berlinNow } from '@/push/schedule';
@@ -36,11 +36,18 @@ function buildBody(dueTasks: Task[]): string {
   return remaining > 0 ? `${shown.join(', ')} und ${remaining} weitere` : shown.join(', ');
 }
 
-export async function build(now: Date): Promise<PushPayload | null> {
+export async function build(now: Date, userId: string): Promise<PushPayload | null> {
   const candidates = await db
     .select()
     .from(tasks)
-    .where(and(isNotNull(tasks.dueAt), isNull(tasks.completedAt), isNull(tasks.deletedAt)))
+    .where(
+      and(
+        eq(tasks.userId, userId),
+        isNotNull(tasks.dueAt),
+        isNull(tasks.completedAt),
+        isNull(tasks.deletedAt),
+      ),
+    )
     .orderBy(desc(tasks.priority), asc(tasks.dueAt));
 
   const due = selectDueTasks(candidates, now);

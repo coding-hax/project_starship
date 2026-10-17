@@ -172,7 +172,7 @@ db.version(2).stores({
 });
 
 // issue #244 adds `reminder_prefs` as a new `SyncTable` (src/local/types.ts), same as
-// `garmin_activities` did in #186 — it lives in the generic `records` store above like
+// `journal_entries` did in #338 — it lives in the generic `records` store above like
 // every other synced table, discriminated by `table` alone. No new store, no new index,
 // so no db.version() bump: Dexie versions the *index* schema, not which `table` values
 // happen to show up in it.

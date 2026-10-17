@@ -12,9 +12,8 @@ selben PR nachziehen.
 
 ## Routen-Grobstruktur
 
-`src/app/(app)/`: Übersicht, Aufgaben, Kalender, Routinen, Aktivitäten, Wetter,
-Journal, Einstellungen. Daneben `anmelden/`, `offline/`, `api/` (Auth, Sync,
-Push, Garmin, ICS).
+`src/app/(app)/`: Übersicht, Aufgaben, Kalender, Routinen, Wetter, Journal,
+Einstellungen. Daneben `anmelden/`, `offline/`, `api/` (Auth, Sync, Push, ICS).
 
 ## Bereich → Datei
 
@@ -27,7 +26,7 @@ Push, Garmin, ICS).
 | Kalender & Termine | `docs/codemap/kalender.md` |
 | Journal | `docs/codemap/journal.md` |
 | Routinen | `docs/codemap/routinen.md` |
-| Wetter, Aktivitäten, Garmin | `docs/codemap/wetter-aktivitaeten.md` |
+| Wetter | `docs/codemap/wetter.md` |
 | Einstellungen, Export | `docs/codemap/einstellungen-export.md` |
 | Playwright-Specs | `docs/codemap/tests.md` |
 | Runner, CI, Workflows | `docs/codemap/scripts.md` |
@@ -40,7 +39,7 @@ Push, Garmin, ICS).
 | welche Felder ein Client schreiben darf | `src/db/sync-tables.ts` |
 | wie eine Änderung zum Server kommt | `src/local/outbox.ts`, dann `src/local/sync.ts` |
 | der Sync-API-Vertrag | `src/local/types.ts` |
-| wer reindarf | `src/auth/session.ts` (`requireOwner`) |
+| wer reindarf | `src/auth/session.ts` (`requireUser`) |
 | Farben, Abstände, Motion | `src/ui/tokens.css` + `docs/DESIGN_SYSTEM.md` |
 | wie ein Screen aus mehreren Live-Queries lädt | `src/ui/overview-ready.tsx` |
 | die Journal-Verschlüsselung | `src/crypto/journal.ts` (+ `envelope.ts`) |
@@ -51,9 +50,11 @@ Push, Garmin, ICS).
 - Kein Feature-Code spricht direkt mit `/api` — **immer** über `src/local/`.
 - Keine Komponente benutzt Rohfarben — **immer** Tokens aus `src/ui/`.
 - Kein Klartext des Journals verlässt `src/crypto/journal.ts`.
-- Jede API-Route prüft `requireOwner()`. Es gibt keinen zweiten Pfad in die Daten.
+- Jede API-Route prüft `requireUser()` und filtert jede Abfrage auf dessen Konto.
+- Jede synchronisierte Tabelle hat `(user_id, id)` als Primärschlüssel.
 - Jede synchronisierte Tabelle spreizt `syncColumns` aus `src/db/schema.ts`.
-- Löschen ist **immer** ein Tombstone (`deleted_at`), nie ein `DELETE`.
+- Löschen ist **immer** ein Tombstone (`deleted_at`), nie ein `DELETE` — die
+  Ausnahme ist ein ganzes Konto, das hart per `ON DELETE CASCADE` fällt.
 - Der App-Router fokussiert je Navigation automatisch das erste Segment-Element
   — `page-transition.tsx` liegt deshalb über dem Router-Segment (nicht
   `template.tsx`); Seiten mit eigener Kopfzeile (`wetter/[datum]/page.tsx`)
