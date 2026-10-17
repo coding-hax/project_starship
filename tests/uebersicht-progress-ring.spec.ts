@@ -255,6 +255,11 @@ test('der Slot ist fest bemessen (88×26px): zwischen "4/12" und "11/14" rückt 
   await device.route('https://api.open-meteo.com/**', (route) => route.abort('failed'));
   await skewClock(device, NOW);
   await device.setViewportSize({ width: 375, height: 812 });
+  // `openSecondDevice`'s own first navigation runs before the routes above exist, so it
+  // completes a real sync pull and lets `JournalHabitBoot` (#505) create the default
+  // Journal habit locally on this device — turning "routinen" off keeps this probe about
+  // tasks only, matching what `seedProgress` seeds (issue #1197 AK4).
+  await setModulesOff(device, ['routinen']);
   await device.goto('/uebersicht');
   await seedProgress(device, 14, 11);
   await expect(ring(device)).toHaveText('11/14');
