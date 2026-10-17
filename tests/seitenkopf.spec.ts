@@ -235,7 +235,7 @@ test('AK3: der Fortschrittsring steht im Fluss neben dem Titel, nicht absolut da
 }) => {
   await registerPasskey(page, '/uebersicht');
 
-  const ring = page.locator('.daily-progress-ring-slot');
+  const ring = page.locator('.daily-progress-meter-slot');
   await expect(ring).toBeVisible();
   const position = await ring.evaluate((el) => getComputedStyle(el).position);
   expect(['absolute', 'fixed'], 'Ring ist kein positionierter Overlay').not.toContain(position);

@@ -190,7 +190,7 @@ test('AK3: die Ringzahl trägt die Rundschrift', async ({ page }) => {
   await registerPasskey(page);
   await seedTask(page, { title: 'Formsprache Ringzahl', dueAt: FIXED_NOW });
   await page.goto('/uebersicht');
-  await assertDisplayRecipe(page.locator('.daily-progress-ring__count'), '.daily-progress-ring__count');
+  await assertDisplayRecipe(page.locator('.daily-progress-meter__count'), '.daily-progress-meter__count');
 });
 
 test('AK3: die große Tages-Temperatur trägt die Rundschrift', async ({ page }) => {

@@ -146,7 +146,7 @@ test('der Link-Text im Routinen-Kopf stimmt mit dem Fortschrittsring überein �
     habitA,
   );
 
-  const ring = page.locator('.daily-progress-ring');
+  const ring = page.locator('.daily-progress-meter');
   const link = page.locator('.habit-today').getByRole('link');
   await expect(ring).toHaveText('1/2');
   await expect(link).toHaveText('1 von 2');
@@ -165,7 +165,7 @@ test('der Fortschrittsring sitzt in der Augenbrauenzeile rechts vom Datum, links
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
 
   const date = page.locator('.uebersicht__eyebrow-date');
-  const ring = page.locator('.daily-progress-ring');
+  const ring = page.locator('.daily-progress-meter');
   // `.app-header__settings` sitzt zweimal im DOM (chrome-Variante der Shell,
   // per CSS auf Mobile `display: none`) — die Rollen-Abfrage filtert wie in
   // shell.mobile.spec.ts über die Accessibility-Tree auf die sichtbare.
@@ -209,7 +209,7 @@ test('der Ring hat ein aria-label, das den Fortschritt in Worten nennt (AK4)', a
     habitId,
   );
 
-  const ring = page.locator('.daily-progress-ring');
+  const ring = page.locator('.daily-progress-meter');
   await expect(ring).toHaveAttribute('role', 'status');
   await expect(ring).toHaveAttribute('aria-label', 'heute 1 von 2 erledigt');
 });
@@ -222,7 +222,7 @@ test('"heute N von M" kommt auf /uebersicht als Fließtext nicht mehr vor (AK3)'
   await page.goto('/uebersicht');
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
 
-  await expect(page.locator('.daily-progress-ring')).toBeVisible();
+  await expect(page.locator('.daily-progress-meter')).toBeVisible();
   await expect(page.getByText(/^heute \d+ von \d+$/)).toHaveCount(0);
 });
 

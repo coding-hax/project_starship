@@ -1,6 +1,7 @@
 /* Titelzeile trägt nur noch Begrüßung + Figur (issue #920 hebt die #618-
- * Entscheidung auf): der Erfassungsknopf ist ein schwebender `Fab` (AK1), Ring
- * und Einstellungen-Einstieg ziehen in die Augenbrauenzeile (AK3, siehe unten).
+ * Entscheidung auf): der Erfassungsknopf ist ein schwebender `Fab` (AK1),
+ * Zählpille und Einstellungen-Einstieg ziehen in die Augenbrauenzeile (AK3,
+ * siehe unten).
  * Einstellungen war zuvor die mobile Ausnahme, die inline in dieser Zeile saß
  * (issue #126) — die Ausnahme bleibt bestehen, nur die Zeile ist jetzt die
  * Augenbraue statt der Titelzeile. */
@@ -106,18 +107,20 @@
   flex-shrink: 0;
 }
 
-/* Fest bemessen, unabhängig davon, ob der Ring gerade etwas zu zeigen hat —
- * der Slot selbst hält die Augenbrauenzeile stabil (issue #652, verkleinert
- * in #920, siehe daily-progress-ring.tsx). */
-.daily-progress-ring-slot {
-  width: 34px;
-  height: 34px;
+/* Fest bemessen, unabhängig davon, ob die Zählpille gerade etwas zu zeigen
+ * hat — der Slot selbst hält die Augenbrauenzeile stabil (issue #652,
+ * verkleinert in #920, vom 34px-Ring zur 88×26px-Pille in #1197, siehe
+ * daily-progress-ring.tsx). */
+.daily-progress-meter-slot {
+  width: 88px;
+  height: 26px;
   flex-shrink: 0;
 }
 
 /* Zusatz-Slot der Kopfzeile trägt hier erst ab 1440px die Zählpille (issue
- * #1180) — darunter bleibt die Augenbraue mit dem kompakten Ring die einzige
- * Stelle für den Tagesstand (AK7). `html:has(...)` statt `[data-ground=...]`
+ * #1180) — darunter bleibt die Augenbraue mit der kompakten Zählpille (#1197)
+ * die einzige Stelle für den Tagesstand (AK7). `html:has(...)` statt
+ * `[data-ground=...]`
  * direkt auf `.page-head__extra`, weil dieselbe Route-Scope-Regel gleich
  * darunter auch Geschwister von `.page-head` treffen muss (Einstellungen-
  * Einstieg, Leistenfuß). Ohne dieses Aus wäre `.page-head__extra` schon unter
@@ -161,7 +164,7 @@ html:has([data-ground='uebersicht']) .page-head__extra {
     margin: 0;
   }
 
-  /* Nur noch das Datum bleibt hier im Fluss — Ring (ausgeblendet, siehe
+  /* Nur noch das Datum bleibt hier im Fluss — Zählpille (ausgeblendet, siehe
    * daily-progress-ring.css) und Einstellungen (absolut, siehe unten) tragen
    * nichts mehr zur Zeilenbreite bei, `space-between` hätte hier nichts mehr
    * zu verteilen. */

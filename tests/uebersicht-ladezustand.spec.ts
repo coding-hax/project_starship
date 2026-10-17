@@ -183,7 +183,7 @@ test('das Öffnen der vollen Übersicht erzeugt keinen einzigen Layout-Shift (AC
   await installProbes(page, BLOCKS);
   await page.reload();
 
-  await expect(page.locator('.daily-progress-ring')).toBeVisible();
+  await expect(page.locator('.daily-progress-meter')).toBeVisible();
   await expect(page.locator('.habit-today')).toBeVisible();
 
   const shifts = await page.evaluate(() => window.__shifts);
@@ -273,7 +273,7 @@ test('nach dem Laden steht der gewohnte Inhalt und aria-busy ist weg (AC4)', asy
   await seedFullOverview(page);
   await page.reload();
 
-  await expect(page.locator('.daily-progress-ring')).toHaveText('0/2');
+  await expect(page.locator('.daily-progress-meter')).toHaveText('0/2');
   await expect(page.locator('.events-overview__next-title')).toHaveText('Zahnarzt');
   await expect(page.getByText('Heute fällig')).toBeVisible();
   await expect(page.locator('.habit-today__item')).toHaveCount(1);
@@ -293,7 +293,7 @@ test('ein hängender Wetter-Request verzögert den übrigen Inhalt nicht (AC5)',
   await seedFullOverview(page);
   await page.reload();
 
-  await expect(page.locator('.daily-progress-ring')).toBeVisible();
+  await expect(page.locator('.daily-progress-meter')).toBeVisible();
   await expect(page.locator('.habit-today')).toBeVisible();
   await expect(page.locator('.weather-forecast__day--skeleton').first()).toBeVisible();
 });
@@ -324,7 +324,7 @@ test('im Dark Mode wird derselbe Inhalt enthüllt (AC7)', async ({ page }) => {
   await seedFullOverview(page);
   await page.reload();
 
-  await expect(page.locator('.daily-progress-ring')).toHaveText('0/2');
+  await expect(page.locator('.daily-progress-meter')).toHaveText('0/2');
   await expect(page.locator('.habit-today__item')).toHaveCount(1);
   await expect(page.locator('.overview-ready')).toBeVisible();
 });

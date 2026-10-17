@@ -6,10 +6,10 @@ import { registerPasskey, resetAppData, skewClock } from './helpers';
  * dieselbe `computeDailyProgress`-Zahl, jetzt „N von M erledigt" im
  * Zusatz-Slot der Kopfzeile statt eines Segmentrings in der Augenbraue. Läuft
  * im `desktop-wide`-Messplatz (1800 × 1000, playwright.config.ts), wie
- * seitenkopf.wide.spec.ts. Unterhalb von 1440px bleibt der bestehende
- * 34px-Ring unverändert — dafür bürgt uebersicht-progress-ring.spec.ts, AK7
- * unten prüft zusätzlich gezielt, dass die neue Regel dort gar nicht erst
- * greift.
+ * seitenkopf.wide.spec.ts. Unterhalb von 1440px bleibt die bestehende
+ * Augenbrauen-Zählpille (88×26px, zuvor ein 34px-Ring, issue #1197)
+ * unverändert — dafür bürgt uebersicht-progress-ring.spec.ts, AK7 unten
+ * prüft zusätzlich gezielt, dass die neue Regel dort gar nicht erst greift.
  */
 
 const NOW = '2026-07-15T12:00:00.000Z';
@@ -20,7 +20,7 @@ function pill(page: Page) {
 }
 
 function compactRing(page: Page) {
-  return page.locator('.daily-progress-ring');
+  return page.locator('.daily-progress-meter');
 }
 
 function greetingGroup(page: Page) {
@@ -212,7 +212,7 @@ test('AK4: die Pille sitzt mittig im freien Feld zwischen Begrüßungsgruppe und
   expect(overlaps(pillBox!, settingsBox!), 'Pille und Einstellungen überlappen sich nicht').toBe(false);
 });
 
-test('AK7: bei 1280px und 375px bleibt der bestehende 34px-Ring unverändert, die Pille bleibt unsichtbar', async ({
+test('AK7: bei 1280px und 375px bleibt die Augenbrauen-Zählpille unverändert, die Desktop-Pille bleibt unsichtbar (issue #1197)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');

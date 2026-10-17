@@ -23,6 +23,7 @@
 @import '../features/habits/habit-tiles.css';
 @import '../features/habits/habit-table.css';
 @import '../features/habits/habit-history-card.css';
+@import '../features/habits/habit-archive-card.css';
 @import '../features/habits/habit-editor.css';
 @import '../features/habits/habit-today.css';
 @import '../features/habits/habit-week-grid.css';

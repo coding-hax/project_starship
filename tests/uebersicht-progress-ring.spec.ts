@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData, skewClock } from './helpers';
+import { openSecondDevice, registerPasskey, resetAppData, skewClock } from './helpers';
 
 /** A Wednesday, so a weekly habit's "current week" has days on both sides. */
 const NOW = '2026-07-15T12:00:00.000Z';
@@ -9,7 +9,7 @@ const TOMORROW_MORNING = '2026-07-16T09:00:00.000Z';
 const MODULES_OFF_KEY = 'starship:modules-off';
 
 function ring(page: Page) {
-  return page.locator('.daily-progress-ring');
+  return page.locator('.daily-progress-meter');
 }
 
 async function seedTask(page: Page, payload: Record<string, unknown>): Promise<string> {
@@ -38,6 +38,17 @@ async function setModulesOff(page: Page, off: string[]): Promise<void> {
     ({ key, off }) => localStorage.setItem(key, JSON.stringify(off)),
     { key: MODULES_OFF_KEY, off },
   );
+}
+
+/** Seeds exactly `total` due tasks, the first `done` of them already completed
+ * — the simplest way to pin the ring at an exact "`done`/`total`" reading for
+ * the AK3/AK4 slot-sizing probes below. */
+async function seedProgress(page: Page, total: number, done: number): Promise<void> {
+  for (let i = 0; i < total; i += 1) {
+    const payload: Record<string, unknown> = { title: `Zählsonde ${i}`, dueAt: TODAY_EVENING };
+    if (i < done) payload.completedAt = NOW;
+    await seedTask(page, payload);
+  }
 }
 
 test.beforeEach(async ({ page }) => {
@@ -171,7 +182,7 @@ test('Ring auf Mobile und Desktop, tabular-nums, Dark Mode und reduzierte Bewegu
     await expect(ring(page)).toHaveText('0/1');
   }
 
-  const label = ring(page).locator('.daily-progress-ring__count');
+  const label = ring(page).locator('.daily-progress-meter__count');
   const lightNums = await label.evaluate((el) => getComputedStyle(el).fontVariantNumeric);
   expect(lightNums).toContain('tabular-nums');
   const lightColor = await label.evaluate((el) => getComputedStyle(el).color);
@@ -184,12 +195,80 @@ test('Ring auf Mobile und Desktop, tabular-nums, Dark Mode und reduzierte Bewegu
   expect(darkColor).not.toBe(lightColor);
 
   // No animation ships in this ticket (fill-animation polish is #418) — the fill
-  // circle must not carry a transition/animation that reduced motion would need
+  // bar must not carry a transition/animation that reduced motion would need
   // to zero out.
   const fillTransition = await ring(page)
-    .locator('.daily-progress-ring__fill')
+    .locator('.daily-progress-meter__fill')
     .evaluate((el) => getComputedStyle(el).transitionDuration);
   expect(parseFloat(fillTransition)).toBeLessThan(0.001);
+});
+
+test('bei 375px Breite und dem breitesten Zählstand "11/14" steht die Pille vollständig in der Augenbrauenzeile und überlappt den Einstellungs-Einstieg nicht (issue #1197 AK3)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+  await seedProgress(page, 14, 11);
+  await expect(ring(page)).toHaveText('11/14');
+
+  const eyebrowRow = page.locator('.uebersicht__eyebrow-row');
+  const { scrollWidth, clientWidth } = await eyebrowRow.evaluate((el) => ({
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+  }));
+  expect(scrollWidth).toBe(clientWidth);
+
+  // `.app-header__settings` sitzt zweimal im DOM (chrome- + inline-Variante,
+  // siehe daily-progress-ring.css-Kommentar zu #1197) — die Rollen-Query
+  // filtert über den Accessibility-Tree auf das sichtbare Element.
+  const settings = page.getByRole('link', { name: 'Einstellungen' });
+  const meterBox = await ring(page).boundingBox();
+  const settingsBox = await settings.boundingBox();
+  expect(meterBox).not.toBeNull();
+  expect(settingsBox).not.toBeNull();
+
+  const overlaps =
+    meterBox!.x < settingsBox!.x + settingsBox!.width &&
+    meterBox!.x + meterBox!.width > settingsBox!.x &&
+    meterBox!.y < settingsBox!.y + settingsBox!.height &&
+    meterBox!.y + meterBox!.height > settingsBox!.y;
+  expect(overlaps).toBe(false);
+});
+
+test('der Slot ist fest bemessen (88×26px): zwischen "4/12" und "11/14" rückt der Einstellungs-Einstieg um höchstens 1px (issue #1197 AK4)', async ({
+  page,
+  browser,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/uebersicht');
+  await seedProgress(page, 12, 4);
+  await expect(ring(page)).toHaveText('4/12');
+  const settingsNarrow = page.getByRole('link', { name: 'Einstellungen' });
+  const boxNarrow = await settingsNarrow.boundingBox();
+
+  // Zweites, unabhängiges Gerät (eigene IndexedDB, dieselbe Session) statt
+  // einer zweiten Mutation auf derselben Seite — so lässt sich der breiteste
+  // Zählstand ("11/14") unabhängig vom schmalsten ("4/12") seeden, ohne
+  // Löschlogik für bereits erledigte Aufgaben zu brauchen.
+  const device = await openSecondDevice(browser, page);
+  await device.route('**/api/sync/**', (route) => route.abort('failed'));
+  await device.route('https://api.open-meteo.com/**', (route) => route.abort('failed'));
+  await skewClock(device, NOW);
+  await device.setViewportSize({ width: 375, height: 812 });
+  // `openSecondDevice`'s own first navigation runs before the routes above exist, so it
+  // completes a real sync pull and lets `JournalHabitBoot` (#505) create the default
+  // Journal habit locally on this device — turning "routinen" off keeps this probe about
+  // tasks only, matching what `seedProgress` seeds (issue #1197 AK4).
+  await setModulesOff(device, ['routinen']);
+  await device.goto('/uebersicht');
+  await seedProgress(device, 14, 11);
+  await expect(ring(device)).toHaveText('11/14');
+  const settingsWide = device.getByRole('link', { name: 'Einstellungen' });
+  const boxWide = await settingsWide.boundingBox();
+
+  expect(boxNarrow).not.toBeNull();
+  expect(boxWide).not.toBeNull();
+  expect(Math.abs(boxNarrow!.x - boxWide!.x)).toBeLessThanOrEqual(1);
 });
 
 test('eine wöchentliche Routine, die früher diese Woche abgehakt wurde, fällt aus dem Ring heraus (issue #503 AC1)', async ({

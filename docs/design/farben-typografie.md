@@ -183,7 +183,7 @@ einen kurzen Kommentar mit dieser Begründung.
   Variable, trägt Fließtext, Listenzeilen, Nav-Labels, Eingabefelder,
   Journal-Einträge, `h2`/`h3`) und `--font-display` (`ui-rounded`/`'SF Pro
   Rounded'` mit Nunito als selbst gehostetem Web-Fallback — trägt `h1` aller
-  neun Routen, `.section-card__title`, die großen Zahlen (Fortschrittsring,
+  neun Routen, `.section-card__title`, die großen Zahlen (Tages-Zählpille,
   Wetter-Temperatur, Aktivitäten-Kennzahl, Uhrzeit in der Kalender-Agenda,
   Routinen-Kachelwerte und Routinen-Verlaufswert, issue #905) und die
   FAB-Beschriftung). Rezept dort überall dieselben vier Zeilen:
@@ -232,7 +232,7 @@ Font-Rollen (issue #859, ADR-0027):
 | Token | Wert | Rolle |
 |---|---|---|
 | `--font-ui` | Inter Variable | Fließtext, Listenzeilen, Nav-Labels, Eingabefelder, Journal-Einträge, `h2`/`h3` |
-| `--font-display` | `ui-rounded`/`'SF Pro Rounded'`, Nunito als Web-Fallback | `h1` (9 Routen), `.section-card__title`, große Zahlen (Fortschrittsring, Wetter-Temperatur, Aktivitäten-Kennzahl, Agenda-Uhrzeit), FAB-Beschriftung |
+| `--font-display` | `ui-rounded`/`'SF Pro Rounded'`, Nunito als Web-Fallback | `h1` (9 Routen), `.section-card__title`, große Zahlen (Tages-Zählpille, Wetter-Temperatur, Aktivitäten-Kennzahl, Agenda-Uhrzeit), FAB-Beschriftung |
 
 **Struktur ist immer leiser als Inhalt.** Ein Raster, eine Achse, eine
 Trennlinie transportiert keine Bedeutung — sie ordnet nur. Solche Elemente

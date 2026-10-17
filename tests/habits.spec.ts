@@ -106,6 +106,12 @@ test.beforeEach(async ({ page }) => {
 test('ein designter Leerzustand statt eines leeren Screens', async ({ page }) => {
   await page.goto('/routinen');
   await expect(page.getByText('Keine Routinen. Leg deine erste an.')).toBeVisible();
+  // Genau einmal auf der Seite (issue #1196 AK4) — HabitTable und
+  // HabitArchiveCard laufen seit der Aufspaltung über je eine eigene
+  // Live-Query, die den Leertext beide zeigen könnten, wenn beide ihn
+  // rendern würden.
+  await expect(page.getByText('Keine Routinen. Leg deine erste an.')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Archiviert' })).toHaveCount(0);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -668,6 +674,28 @@ test('Reaktivieren aus dem Archiv macht die Routine ohne Undo-Angebot wieder akt
   await expect(page.getByRole('button', { name: 'Rückgängig' })).toHaveCount(0);
 });
 
+test('„Bearbeiten" öffnet den Routinen-Editor auch für eine archivierte Routine (issue #1196 AK3)', async ({
+  page,
+}) => {
+  await page.goto('/routinen');
+  await seedHabit(page, {
+    name: 'Archiv-Editier-Sonde',
+    schedule: 'weekly',
+    color: null,
+    archivedAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  await expandArchived(page);
+  const archivedItem = archivedHabitItems(page).filter({ hasText: 'Archiv-Editier-Sonde' });
+  await tapHabitRow(archivedItem, 'Archiv-Editier-Sonde');
+  await archivedItem.getByRole('button', { name: 'Bearbeiten' }).click();
+
+  const dialog = editDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(nameField(page)).toHaveValue('Archiv-Editier-Sonde');
+  await expect(habitChip(dialog, 'Rhythmus')).toHaveText('Wöchentlich');
+});
+
 /* -------------------------------------------------------------------------- */
 /* issue #505 AC2/AC3: die Journal-Routine ist fest — kein Archivieren,    */
 /* Editor zeigt nur den Rhythmus                                              */
@@ -978,10 +1006,11 @@ test('bei reduzierter Bewegung ist der Klapp-Übergang des Archiv-Bereichs augen
 });
 
 /* -------------------------------------------------------------------------- */
-/* AK: Abstand zwischen aktiver Tabelle und Archiv-Block (issue #486)         */
+/* AK: Abstand zur Archiv-Karte (issue #486, Adjazenz seit issue #1196        */
+/* nicht mehr zur Tabelle, sondern zur Verlaufskarte bzw. zum Leertext)       */
 /* -------------------------------------------------------------------------- */
 
-test('der Abstand zwischen der Routinen-Tabelle und dem Archiv-Block ist größer als der Standard-Blockabstand', async ({
+test('der Abstand zwischen der Verlaufskarte und dem Archiv-Block folgt dem normalen Kartenabstand', async ({
   page,
 }) => {
   await page.goto('/routinen');
@@ -993,18 +1022,23 @@ test('der Abstand zwischen der Routinen-Tabelle und dem Archiv-Block ist größe
     archivedAt: '2026-01-01T00:00:00.000Z',
   });
 
-  const table = page.locator('.habit-table');
+  // Die Archiv-Karte steht seit issue #1196 nicht mehr direkt hinter der
+  // Tabelle, sondern hinter der Verlaufskarte (HabitHistoryCard rendert hier,
+  // weil "Aktiv 1" aktiv ist) — deren eigener `margin-bottom` kollabiert mit
+  // dem `margin-top` der Archiv-Karte zum üblichen Kartenabstand, keiner
+  // größeren, extra ausgezeichneten Lücke mehr.
+  const history = page.locator('.habit-history-card');
   const archivedSection = page.locator('.section-card');
 
-  await expect.poll(() => table.evaluate((el) => el.getAnimations().some((a) => a.playState === 'running'))).toBe(false);
+  await expect.poll(() => history.evaluate((el) => el.getAnimations().some((a) => a.playState === 'running'))).toBe(false);
 
-  const tableRect = await table.boundingBox();
+  const historyRect = await history.boundingBox();
   const archivedRect = await archivedSection.boundingBox();
 
-  if (tableRect && archivedRect) {
-    const spacingBetween = archivedRect.y - (tableRect.y + tableRect.height);
-    // --space-6 = 24px
-    expect(spacingBetween).toBeGreaterThanOrEqual(24);
+  if (historyRect && archivedRect) {
+    const spacingBetween = archivedRect.y - (historyRect.y + historyRect.height);
+    // --space-4 = 16px
+    expect(spacingBetween).toBeGreaterThanOrEqual(16);
   }
 });
 
@@ -1019,6 +1053,9 @@ test('der Abstand zum Archiv-Block existiert auch bei fehlenden aktiven Routinen
     archivedAt: '2026-01-01T00:00:00.000Z',
   });
 
+  // Ohne aktive Routine rendert HabitHistoryCard gar nicht (eigene Regel,
+  // unabhängig von issue #1196) — die Archiv-Karte folgt hier direkt auf den
+  // Leertext, mit demselben normalen Kartenabstand wie im Fall oben.
   const emptyMessage = page.getByText('Keine aktiven Routinen.');
   const archivedSection = page.locator('.section-card');
 
@@ -1029,7 +1066,7 @@ test('der Abstand zum Archiv-Block existiert auch bei fehlenden aktiven Routinen
 
   if (emptyRect && archivedRect) {
     const spacingBetween = archivedRect.y - (emptyRect.y + emptyRect.height);
-    // --space-6 = 24px
-    expect(spacingBetween).toBeGreaterThanOrEqual(24);
+    // --space-4 = 16px
+    expect(spacingBetween).toBeGreaterThanOrEqual(16);
   }
 });

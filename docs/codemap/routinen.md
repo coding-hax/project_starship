@@ -8,5 +8,6 @@
 - `habits-overview-section.tsx` — Übersichts-Wrapper für die Abhak-Liste
 - `habit-tiles.tsx` / `.css` — vier Kennzahl-Kacheln auf der Routinen-Seite
 - `habit-table.tsx` / `habit-week-grid.tsx` / `row-month-nav.tsx` / `.css` — ausklappbare Tabelle mit Monatsraster je Zeile
+- `habit-row.tsx` / `habit-archive-card.tsx` / `.css` — geteilte Zeile, eingeklappter Archiv-Bereich unter dem Verlauf
 - `habit-history-card.tsx` / `.css` / `history-grid.ts` — wischbare Verlaufskarte (Zeitraum 30 Tage bis 1 Woche), feste Zeile je Routine
 - `use-archive-habit.ts` / `habit-editor.tsx` / `.css` / `add-habit-fab.tsx` — Archiv, Anlegen/Bearbeiten per Sheet und FAB

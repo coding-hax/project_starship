@@ -36,10 +36,10 @@ export default function UebersichtPage() {
               <TodayLongDate />
             </span>
             <div className="uebersicht__eyebrow-actions">
-              {/* Fest bemessener Slot (34×34px), unabhängig vom Ladezustand des Rings
+              {/* Fest bemessener Slot (88×26px), unabhängig vom Ladezustand der Pille
                   gerendert — er hält die Augenbrauenzeile stabil, nicht ein Beitritt
                   zum Enthüllungspunkt (issue #652, siehe daily-progress-ring.tsx). */}
-              <div className="daily-progress-ring-slot">
+              <div className="daily-progress-meter-slot">
                 <DailyProgressRing />
               </div>
               <AppHeader variant="inline" />

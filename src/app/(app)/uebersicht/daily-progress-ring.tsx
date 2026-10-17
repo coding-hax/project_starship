@@ -7,9 +7,6 @@ import { useTasks } from '@/features/tasks/use-tasks';
 import './daily-progress-ring.css';
 import { computeDailyProgress, type DailyProgress } from './daily-progress';
 
-const RADIUS = 14.5;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-
 function formatOpen(open: DailyProgress['open']): string {
   const parts: string[] = [];
   if (open.aufgaben > 0) {
@@ -22,20 +19,23 @@ function formatOpen(open: DailyProgress['open']): string {
 }
 
 /**
- * Tages-Fortschrittsring in der Augenbrauenzeile von /uebersicht (issue #428,
- * M-1 aus #416, in die Titelzeile verschoben in #652, in die Augenbrauenzeile
- * verkleinert in #920): „N von M" aus Aufgaben + Routinen, modulübergreifend —
- * deshalb im Übersicht-Rahmen (page.tsx) statt in der per-Modul-
- * `OverviewSection`-Registry. Rendert `null`, bis alle drei Live-Queries durch
- * sind, und bei M = 0 dauerhaft (ruhiger Leerzustand statt „0 von 0").
+ * Tages-Fortschritt in der Augenbrauenzeile von /uebersicht (issue #428, M-1
+ * aus #416, in die Titelzeile verschoben in #652, in die Augenbrauenzeile
+ * verkleinert in #920, vom Ring zur waagerechten Zählpille in #1197 — die
+ * Zahl allein war schon bei „11/14" breiter als der 34px-Ring): „N von M" aus
+ * Aufgaben + Routinen, modulübergreifend — deshalb im Übersicht-Rahmen
+ * (page.tsx) statt in der per-Modul-`OverviewSection`-Registry. Rendert
+ * `null`, bis alle drei Live-Queries durch sind, und bei M = 0 dauerhaft
+ * (ruhiger Leerzustand statt „0 von 0").
  *
- * Sitzt in einem von `page.tsx` fest bemessenen Slot (`.daily-progress-ring-slot`,
- * 34×34px) — der Slot, nicht dieser Wechsel zwischen `null` und Inhalt, hält die
- * Augenbrauenzeile stabil, also kein `useBlockReady` nötig: die Augenbrauenzeile
- * steht bewusst außerhalb von `OverviewReadyProvider` (issue #642) und ein
- * Beitritt dort würde sie selbst verzögern statt sie stabil zu halten.
+ * Sitzt in einem von `page.tsx` fest bemessenen Slot
+ * (`.daily-progress-meter-slot`, 88×26px) — der Slot, nicht dieser Wechsel
+ * zwischen `null` und Inhalt, hält die Augenbrauenzeile stabil, also kein
+ * `useBlockReady` nötig: die Augenbrauenzeile steht bewusst außerhalb von
+ * `OverviewReadyProvider` (issue #642) und ein Beitritt dort würde sie selbst
+ * verzögern statt sie stabil zu halten.
  *
- * Ab 1440px verschwindet dieser Ring (uebersicht.css) zugunsten von
+ * Ab 1440px verschwindet diese Pille (uebersicht.css) zugunsten von
  * `DailyProgressPill` unten, die dieselbe Zahl im Zusatz-Slot der Kopfzeile
  * zeigt (issue #1180, Nachfolger von #1122).
  */
@@ -51,50 +51,19 @@ export function DailyProgressRing() {
   if (total === 0) return null;
 
   const fraction = done / total;
-  const offset = CIRCUMFERENCE * (1 - fraction);
 
   return (
     <div
-      className="daily-progress-ring"
+      className="daily-progress-meter"
       role="status"
       aria-label={`heute ${done} von ${total} erledigt`}
     >
-      <svg
-        className="daily-progress-ring__svg"
-        viewBox="0 0 34 34"
-        width="34"
-        height="34"
-        aria-hidden="true"
-      >
-        <circle
-          className="daily-progress-ring__track"
-          cx="17"
-          cy="17"
-          r={RADIUS}
-          fill="none"
-          strokeWidth="3"
-        />
-        <circle
-          className="daily-progress-ring__fill"
-          cx="17"
-          cy="17"
-          r={RADIUS}
-          fill="none"
-          strokeWidth="3"
-          strokeDasharray={CIRCUMFERENCE}
-          strokeDashoffset={offset}
-          transform="rotate(-90 17 17)"
-        />
-        <text
-          className="daily-progress-ring__count"
-          x="17"
-          y="17"
-          textAnchor="middle"
-          dominantBaseline="central"
-        >
-          {done}/{total}
-        </text>
-      </svg>
+      <span className="daily-progress-meter__count">
+        {done}/{total}
+      </span>
+      <span className="daily-progress-meter__track">
+        <span className="daily-progress-meter__fill" style={{ width: `${fraction * 100}%` }} />
+      </span>
     </div>
   );
 }

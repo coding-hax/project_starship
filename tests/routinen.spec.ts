@@ -113,31 +113,53 @@ test.beforeEach(async ({ page }) => {
 /* AK1: Aufbau — Kopf, drei Kacheln, Tabelle, Verlaufskarte, in Reihenfolge    */
 /* -------------------------------------------------------------------------- */
 
-test('AK1: /routinen zeigt Kopf, Kacheln, Tabelle und Verlaufskarte in dieser Reihenfolge, ohne StreakSummaryCard/HabitList (issue #905)', async ({
+test('AK1: /routinen zeigt Kopf, Kacheln, Tabelle, Verlaufskarte und Archiviert in dieser Reihenfolge, ohne waagerechten Überlauf, hell und dunkel (issue #905, #1196)', async ({
   page,
 }) => {
   const habitId = await seedHabit(page, { name: 'Aufbau-Sonde' });
   await seedHabitLog(page, habitId, TODAY);
+  await seedHabit(page, {
+    name: 'Aufbau-Sonde (alt)',
+    archivedAt: '2026-07-01T00:00:00.000Z',
+  });
   await page.goto('/routinen');
 
   const heading = page.getByRole('heading', { level: 1, name: 'Routinen' });
   const tiles = page.locator('.habit-tiles');
   const table = page.locator('.habit-table');
   const history = page.locator('.habit-history-card');
+  // Klassen- statt Rollen-Selektor: `getByRole('button', { name: 'Archiviert' })`
+  // matcht ohne `exact` case-insensitiv als Teilstring — träfe z. B. auch einen
+  // Zeilenkopf, dessen Routinenname "archiviert" enthält.
+  const archive = page.locator('.section-card__header--button');
   await expect(heading).toBeVisible();
   await expect(tiles).toBeVisible();
   await expect(table).toBeVisible();
   await expect(history).toBeVisible();
+  await expect(archive).toBeVisible();
 
-  const [headingY, tilesY, tableY, historyY] = await Promise.all([
+  const [headingY, tilesY, tableY, historyY, archiveY] = await Promise.all([
     heading.evaluate((el) => el.getBoundingClientRect().y),
     tiles.evaluate((el) => el.getBoundingClientRect().y),
     table.evaluate((el) => el.getBoundingClientRect().y),
     history.evaluate((el) => el.getBoundingClientRect().y),
+    archive.evaluate((el) => el.getBoundingClientRect().y),
   ]);
   expect(headingY, 'Kopf steht über den Kacheln').toBeLessThan(tilesY);
   expect(tilesY, 'Kacheln stehen über der Tabelle').toBeLessThan(tableY);
   expect(tableY, 'Tabelle steht über der Verlaufskarte').toBeLessThan(historyY);
+  expect(historyY, 'Verlaufskarte steht über der Karte Archiviert').toBeLessThan(archiveY);
+
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    const overflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(overflow.scrollWidth, `kein waagerechter Überlauf (${scheme})`).toBeLessThanOrEqual(
+      overflow.clientWidth,
+    );
+  }
 
   // The standalone management list and the old single-number card are gone —
   // their content lives inside the table/tiles/history card now (issue #905).
@@ -146,6 +168,41 @@ test('AK1: /routinen zeigt Kopf, Kacheln, Tabelle und Verlaufskarte in dieser Re
     await page.locator('.streak-summary-card').count(),
     'StreakSummaryCard ist verschwunden',
   ).toBe(0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* AK2 (#1196): der Umschalter "Archiviert" folgt im DOM auf die Verlaufs-    */
+/* karte — die Reihenfolge entsteht aus der Dokumentreihenfolge, nicht per   */
+/* CSS order/grid-row (Fokus- und Vorlesereihenfolge folgen der sichtbaren)   */
+/* -------------------------------------------------------------------------- */
+
+test('AK2 (#1196): "Archiviert" folgt im DOM auf .habit-history-card statt nur visuell per order/grid-row', async ({
+  page,
+}) => {
+  const habitId = await seedHabit(page, { name: 'DOM-Sonde' });
+  await seedHabitLog(page, habitId, TODAY);
+  await seedHabit(page, {
+    name: 'DOM-Sonde (alt)',
+    archivedAt: '2026-07-01T00:00:00.000Z',
+  });
+  await page.goto('/routinen');
+
+  const follows = await page.evaluate(() => {
+    const history = document.querySelector('.habit-history-card');
+    const archiveButton = document.querySelector('.section-card__header--button');
+    if (!history || !archiveButton) return null;
+    // DOCUMENT_POSITION_FOLLOWING (4): archiveButton kommt im DOM nach history,
+    // nicht nur visuell per CSS order/grid-row versetzt.
+    return Boolean(history.compareDocumentPosition(archiveButton) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  expect(follows, 'Archiviert-Umschalter folgt im DOM auf die Verlaufskarte').toBe(true);
+
+  const [historyOrder, archiveOrder] = await Promise.all([
+    page.locator('.habit-history-card').evaluate((el) => getComputedStyle(el).order),
+    page.locator('.habit-archive-card').evaluate((el) => getComputedStyle(el).order),
+  ]);
+  expect(historyOrder, 'keine CSS order auf der Verlaufskarte').toBe('0');
+  expect(archiveOrder, 'keine CSS order auf der Archiv-Karte').toBe('0');
 });
 
 /* -------------------------------------------------------------------------- */
