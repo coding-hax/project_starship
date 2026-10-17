@@ -119,7 +119,7 @@ test('AK1: /routinen zeigt Kopf, Kacheln, Tabelle, Verlaufskarte und Archiviert 
   const habitId = await seedHabit(page, { name: 'Aufbau-Sonde' });
   await seedHabitLog(page, habitId, TODAY);
   await seedHabit(page, {
-    name: 'Aufbau-Sonde archiviert',
+    name: 'Aufbau-Sonde (alt)',
     archivedAt: '2026-07-01T00:00:00.000Z',
   });
   await page.goto('/routinen');
@@ -128,7 +128,10 @@ test('AK1: /routinen zeigt Kopf, Kacheln, Tabelle, Verlaufskarte und Archiviert 
   const tiles = page.locator('.habit-tiles');
   const table = page.locator('.habit-table');
   const history = page.locator('.habit-history-card');
-  const archive = page.getByRole('button', { name: 'Archiviert' });
+  // Klassen- statt Rollen-Selektor: `getByRole('button', { name: 'Archiviert' })`
+  // matcht ohne `exact` case-insensitiv als Teilstring — träfe z. B. auch einen
+  // Zeilenkopf, dessen Routinenname "archiviert" enthält.
+  const archive = page.locator('.section-card__header--button');
   await expect(heading).toBeVisible();
   await expect(tiles).toBeVisible();
   await expect(table).toBeVisible();
@@ -179,7 +182,7 @@ test('AK2 (#1196): "Archiviert" folgt im DOM auf .habit-history-card statt nur v
   const habitId = await seedHabit(page, { name: 'DOM-Sonde' });
   await seedHabitLog(page, habitId, TODAY);
   await seedHabit(page, {
-    name: 'DOM-Sonde archiviert',
+    name: 'DOM-Sonde (alt)',
     archivedAt: '2026-07-01T00:00:00.000Z',
   });
   await page.goto('/routinen');

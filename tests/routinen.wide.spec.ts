@@ -356,12 +356,17 @@ test('die Karte „Archiviert" steht rechts unterhalb der Verlaufskarte, gleiche
     'Oberkante der Archiv-Karte unter der Unterkante der Verlaufskarte',
   ).toBeGreaterThanOrEqual(historyBox.y + historyBox.height);
 
-  // Die Tabelle spannt weiterhin über die Verlauf-Zeile (#1125 AK1) — mit der
-  // vierten Zeile jetzt auch über die Archiv-Zeile.
-  expect(
-    tableBox.y + tableBox.height,
-    'Tabelle reicht über das Ende der Verlauf-Zeile hinaus',
-  ).toBeGreaterThan(historyBox.y);
+  // Die Tabelle spannt weiterhin über die Verlauf-Zeile (#1125 AK1/AK3, dort
+  // mit einer hohen Tabelle gemessen) — hier genügt die CSS-Deklaration
+  // selbst: unverändert `grid-row: 2 / -1`, und `-1` löst jetzt auf die neue
+  // vierte Zeile auf statt auf die dritte.
+  const wrapper = page.locator('.routinen-page__table');
+  const [gridRowStart, gridRowEnd] = await Promise.all([
+    wrapper.evaluate((el) => getComputedStyle(el).gridRowStart),
+    wrapper.evaluate((el) => getComputedStyle(el).gridRowEnd),
+  ]);
+  expect(gridRowStart, 'Tabellen-Wrapper beginnt weiterhin in Zeile 2').toBe('2');
+  expect(gridRowEnd, 'Tabellen-Wrapper reicht weiterhin bis zur letzten Zeile').toBe('-1');
 });
 
 /* -------------------------------------------------------------------------- */
