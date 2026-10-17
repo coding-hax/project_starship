@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { JOURNAL_HABIT_ID } from '@/features/journal/journal-habit';
 import {
@@ -17,23 +16,6 @@ async function setModulesOff(page: Page, off: string[]): Promise<void> {
   await page.evaluate(
     ({ key, off }) => localStorage.setItem(key, JSON.stringify(off)),
     { key: MODULES_OFF_KEY, off },
-  );
-}
-
-/**
- * Minimal server-origin activity row (ADR-0011, issue #186) — just enough to make
- * `activities.length > 0` true, so the `aktivitaeten`-off assertions below prove the
- * registry gate, not the strip's own empty-data guard (issue #180) that would hide
- * it anyway.
- */
-async function seedGarminActivity(): Promise<void> {
-  await withDb((client) =>
-    client.query(
-      `INSERT INTO garmin_activities
-        (id, updated_at, deleted_at, synced_at, sync_seq, garmin_activity_id, activity_type, started_at, fetched_at)
-       VALUES ($1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4, now())`,
-      [randomUUID(), Math.floor(Math.random() * 1_000_000_000), 'running', '2020-01-01T00:00:00Z'],
-    ),
   );
 }
 
@@ -64,8 +46,8 @@ test('ein Modul abschalten blendet seinen Tab aus, ohne die übrigen zu verände
   await page.getByRole('switch', { name: 'Journal' }).click();
 
   await expect(nav.getByRole('link', { name: 'Journal' })).toHaveCount(0);
-  await expect(nav.locator('.nav__item')).toHaveCount(5);
-  for (const label of ['Übersicht', 'Aufgaben', 'Routinen', 'Kalender', 'Aktivitäten']) {
+  await expect(nav.locator('.nav__item')).toHaveCount(4);
+  for (const label of ['Übersicht', 'Aufgaben', 'Routinen', 'Kalender']) {
     await expect(nav.getByRole('link', { name: label })).toBeVisible();
   }
 });
@@ -174,8 +156,8 @@ test('offline: Umschalten ist eine reine localStorage-Mutation, keine Outbox-Op 
   await page.goto('/einstellungen');
   await context.setOffline(true);
 
-  await page.getByRole('switch', { name: 'Aktivitäten' }).click();
-  await expect(page.getByRole('switch', { name: 'Aktivitäten' })).toHaveAttribute('aria-checked', 'false');
+  await page.getByRole('switch', { name: 'Kalender' }).click();
+  await expect(page.getByRole('switch', { name: 'Kalender' })).toHaveAttribute('aria-checked', 'false');
 
   const pendingSize = await page.evaluate(() => window.__starship.size());
   expect(pendingSize).toBe(0);
@@ -252,27 +234,28 @@ test('export aus blendet das Export-Panel aus — die Export-Fähigkeit selbst b
   await expect(page.getByRole('button', { name: 'Alles exportieren' })).toHaveCount(0);
 });
 
-test('aktivitaeten aus blendet den Monatsstreifen aus, auch wenn Aktivitäten vorhanden sind (issue #308 AC4)', async ({
+test('wetter aus blendet die Vorhersage aus, auch wenn Daten vorhanden sind (issue #308 AC4)', async ({
   page,
 }) => {
   await resetAppData();
-  await seedGarminActivity();
+  await page.route(OPEN_METEO_PATTERN, (route) =>
+    route.fulfill({ json: openMeteoForecastBody({ dates: ['2026-07-28'], tempsMax: [20], tempsMin: [10] }) }),
+  );
 
   await page.goto('/uebersicht');
-  await expect(page.locator('.activity-month-strip')).toBeVisible();
+  await expect(page.locator('.weather-forecast')).toBeVisible();
 
   await page.goto('/einstellungen');
-  await page.getByRole('switch', { name: 'Aktivitäten' }).click();
+  await page.getByRole('switch', { name: 'Wetter' }).click();
 
   await page.goto('/uebersicht');
-  await expect(page.locator('.activity-month-strip')).toHaveCount(0);
+  await expect(page.locator('.weather-forecast')).toHaveCount(0);
 });
 
-test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Aktivitäten→Routinen, auch wenn eine mittendrin fehlt (issue #308 AC5)', async ({
+test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Routinen, auch wenn eine mittendrin fehlt (issue #308 AC5)', async ({
   page,
 }) => {
   await resetAppData();
-  await seedGarminActivity();
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({ json: openMeteoForecastBody({ dates: ['2026-07-28'], tempsMax: [20], tempsMin: [10] }) }),
   );
@@ -283,21 +266,17 @@ test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Aktivitäten�
   // eigenen Kartenkopf statt eines Seitengrund-h2 (AK2) — beide Anker daher auf
   // Inhaltsselektoren statt der (Aufgaben) bzw. verschobenen (Routinen) Überschrift.
   const aufgaben = page.locator('.task-list, .task-list__empty');
-  const aktivitaeten = page.locator('.activity-month-strip');
   const routinen = page.locator('.habit-today');
 
   await expect(wetter).toBeVisible();
-  await expect(aktivitaeten).toBeVisible();
 
-  const [wetterY, aufgabenY, aktivitaetenY, routinenY] = await Promise.all([
+  const [wetterY, aufgabenY, routinenY] = await Promise.all([
     topOf(wetter),
     topOf(aufgaben),
-    topOf(aktivitaeten),
     topOf(routinen),
   ]);
   expect(wetterY).toBeLessThan(aufgabenY);
-  expect(aufgabenY).toBeLessThan(aktivitaetenY);
-  expect(aktivitaetenY).toBeLessThan(routinenY);
+  expect(aufgabenY).toBeLessThan(routinenY);
 
   // Aufgaben (mittendrin) abschalten — die übrigen drei behalten ihre Reihenfolge,
   // statt in der falschen Sequenz aufzurücken.
@@ -306,13 +285,8 @@ test('Reihenfolge der aktiven Sektionen bleibt Wetter→Aufgaben→Aktivitäten�
   await page.goto('/uebersicht');
   await expect(aufgaben).toHaveCount(0);
 
-  const [wetterY2, aktivitaetenY2, routinenY2] = await Promise.all([
-    topOf(wetter),
-    topOf(aktivitaeten),
-    topOf(routinen),
-  ]);
-  expect(wetterY2).toBeLessThan(aktivitaetenY2);
-  expect(aktivitaetenY2).toBeLessThan(routinenY2);
+  const [wetterY2, routinenY2] = await Promise.all([topOf(wetter), topOf(routinen)]);
+  expect(wetterY2).toBeLessThan(routinenY2);
 });
 
 test('offline: aufgaben abschalten bleibt eine reine localStorage-Mutation, keine Outbox-Op — die Übersicht-Sektion folgt beim nächsten (Online-)Laden derselben Registry-Prüfung wie die anderen Module (issue #308, Regression zu #307 AC6)', async ({
@@ -393,7 +367,7 @@ test('ein aktives Modul bleibt über seine Route direkt erreichbar (issue #309 A
 });
 
 test('core-Routen werden nie umgeleitet, auch wenn andere Module aus sind (issue #309 AC4)', async ({ page }) => {
-  await setModulesOff(page, ['journal', 'kalender', 'routinen', 'aufgaben', 'aktivitaeten']);
+  await setModulesOff(page, ['journal', 'kalender', 'routinen', 'aufgaben', 'wetter']);
 
   await page.goto('/uebersicht');
   await expect(page).toHaveURL(/\/uebersicht$/);
@@ -435,15 +409,7 @@ async function moduleLabels(page: Page): Promise<string[]> {
   return moduleCard(page).locator('.row__label').allInnerTexts();
 }
 
-const DEFAULT_ORDER = [
-  'Aufgaben',
-  'Routinen',
-  'Kalender',
-  'Journal',
-  'Aktivitäten',
-  'Wetter',
-  'Export',
-];
+const DEFAULT_ORDER = ['Aufgaben', 'Routinen', 'Kalender', 'Journal', 'Wetter', 'Export'];
 
 test('Modul-Schalter stehen in Nav-Reihenfolge, Wetter/Export dahinter (issue #935 AC1, AC3)', async ({
   page,
@@ -469,7 +435,6 @@ test('eine geänderte Nav-Reihenfolge wirkt sofort auf die Modul-Schalterliste, 
     'Aufgaben',
     'Routinen',
     'Journal',
-    'Aktivitäten',
     'Wetter',
     'Export',
   ]);

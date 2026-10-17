@@ -15,7 +15,6 @@ type FaceName =
   | 'kalender'
   | 'routinen'
   | 'journal'
-  | 'aktivitaeten'
   | 'wetter'
   | 'einstellungen'
   | 'anmelden';
@@ -118,23 +117,6 @@ const FACE_CONTENT: Record<FaceName, React.ReactNode> = {
     </>
   ),
 
-  aktivitaeten: (
-    <>
-      <path
-        className="face__body"
-        d="M32 3c12.5 10.5 22.5 19 22.5 31.5a22.5 22.5 0 11-45 0C9.5 22 19.5 13.5 32 3z"
-      />
-      <g className="face__eyes">
-        <circle cx="24" cy="32" r="4.2" />
-        <circle cx="40" cy="32" r="4.2" />
-      </g>
-      <path
-        className="face__line"
-        style={{ strokeWidth: 4.4 }}
-        d="M22.5 41c3 7.2 6.6 10.8 9.5 10.8s6.5-3.6 9.5-10.8"
-      />
-    </>
-  ),
 
   wetter: (
     <>

@@ -317,7 +317,7 @@ export async function credentialRowExists(id: string): Promise<boolean> {
 export async function resetAppData() {
   await withDb(async (client) => {
     await client.query(
-      'DELETE FROM sync_state; DELETE FROM tasks; DELETE FROM garmin_activities; ' +
+      'DELETE FROM sync_state; DELETE FROM tasks; ' +
         'DELETE FROM reminder_prefs; DELETE FROM category_colors; ' +
         'DELETE FROM journal_entries; DELETE FROM journal_keys; ' +
         // habit_logs/habit_freezes first — both reference habits via a foreign key.
@@ -358,8 +358,7 @@ export async function resetDatabase() {
         'DELETE FROM auth_rate_limits; ' +
         'DELETE FROM recovery_codes; DELETE FROM sync_state; DELETE FROM tasks; ' +
         'DELETE FROM habit_logs; DELETE FROM habit_freezes; DELETE FROM habits; ' +
-        'DELETE FROM garmin_activities; ' +
-        'DELETE FROM garmin_tokens; DELETE FROM reminder_prefs; DELETE FROM category_colors; ' +
+        'DELETE FROM reminder_prefs; DELETE FROM category_colors; ' +
         'DELETE FROM journal_entries; ' +
         'DELETE FROM journal_keys; ' +
         // event_exceptions first — it references events via a foreign key (issue #553).
@@ -610,7 +609,6 @@ declare global {
           | 'tasks'
           | 'habits'
           | 'habit_logs'
-          | 'garmin_activities'
           | 'reminder_prefs'
           | 'journal_entries'
           | 'journal_keys'

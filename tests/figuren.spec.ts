@@ -11,15 +11,9 @@ import { openMeteoForecastBody, registerPasskey, resetAppData } from './helpers'
 test.describe.configure({ timeout: 120_000 });
 
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
-const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
-  await page.route(GARMIN_SYNC_PATTERN, (route) =>
-    route.fulfill({
-      json: { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 },
-    }),
-  );
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
       json: openMeteoForecastBody({
@@ -45,7 +39,6 @@ const ROUTES: RouteCase[] = [
   { face: 'kalender', path: '/kalender' },
   { face: 'routinen', path: '/routinen' },
   { face: 'journal', path: '/journal' },
-  { face: 'aktivitaeten', path: '/aktivitaeten' },
   { face: 'wetter', path: '/wetter/2026-07-18' },
   { face: 'einstellungen', path: '/einstellungen' },
 ];
@@ -207,10 +200,6 @@ const EXPECTED_BODY: Record<string, BodyGeometry> = {
     transform: null,
     shapes: [{ tag: 'path', d: 'M32 9l19 12v22L32 55 13 43V21z' }],
   },
-  aktivitaeten: {
-    transform: null,
-    shapes: [{ tag: 'path', d: 'M32 3c12.5 10.5 22.5 19 22.5 31.5a22.5 22.5 0 11-45 0C9.5 22 19.5 13.5 32 3z' }],
-  },
   wetter: {
     transform: null,
     shapes: [
@@ -249,7 +238,6 @@ const FACE_COLORS: Record<string, { body: string; ink: string }> = {
   kalender: { body: '#9ad2ff', ink: '#093a90' },
   routinen: { body: '#ff7300', ink: '#7a2e00' },
   journal: { body: '#ffce00', ink: '#4a1d78' },
-  aktivitaeten: { body: '#ffffff', ink: '#a86a00' },
   wetter: { body: '#ffffff', ink: '#14638f' },
   einstellungen: { body: '#ffc44d', ink: '#333d47' },
   anmelden: { body: '#ffffff', ink: '#ff7300' },
@@ -436,7 +424,6 @@ const HEADERS: HeaderCase[] = [
   { path: '/kalender', header: (page) => page.locator('.calendar-view__header') },
   { path: '/routinen', header: (page) => page.locator('.page-face-row') },
   { path: '/journal', header: (page) => page.locator('.journal-page__title-row') },
-  { path: '/aktivitaeten', header: (page) => page.locator('.page-face-row') },
   { path: '/wetter/2026-07-18', header: (page) => page.locator('.weather-day__topbar') },
   { path: '/einstellungen', header: (page) => page.locator('.einstellungen__topbar') },
 ];
@@ -458,9 +445,9 @@ test('AK6: kein Kopf läuft über, nachdem die 42-px-Figur eingezogen ist (375×
   }
 });
 
-test('AK1 (#962): Figur sitzt rechts außen in der Titelzeile von /routinen und /aktivitaeten', async ({ page }) => {
+test('AK1 (#962): Figur sitzt rechts außen in der Titelzeile von /routinen', async ({ page }) => {
   await registerPasskey(page);
-  for (const path of ['/routinen', '/aktivitaeten']) {
+  for (const path of ['/routinen']) {
     await page.goto(path);
     const row = page.locator('.page-face-row');
     const face = row.locator('.face');

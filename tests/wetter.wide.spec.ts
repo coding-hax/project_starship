@@ -14,8 +14,6 @@ import { installClockAt, openMeteoForecastBody, registerPasskey, resetAppData } 
  */
 
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
-const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
-const SYNC_COUNTERS = { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 };
 
 // Enthält bewusst einstellige Tagesnummern (7, 8, 9) — genau das Beispiel aus
 // dem Ticket.
@@ -33,9 +31,8 @@ const NOW = '2026-07-07T09:00:00.000Z';
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
-  // /uebersicht löst beim Laden echte Netzaufrufe aus (Garmin-Sync, Open-Meteo),
-  // die ungemockt als Konsolenfehler/Dev-Overlay im DOM landen (wie seitenkopf.wide.spec.ts).
-  await page.route(GARMIN_SYNC_PATTERN, (route) => route.fulfill({ json: SYNC_COUNTERS }));
+  // /uebersicht löst beim Laden einen echten Open-Meteo-Aufruf aus, der ungemockt
+  // als Konsolenfehler/Dev-Overlay im DOM landet (wie seitenkopf.wide.spec.ts).
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
       json: openMeteoForecastBody({

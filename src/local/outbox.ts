@@ -1,6 +1,6 @@
 import { uuidv7 } from 'uuidv7';
 import { db, type LocalRecord } from './dexie';
-import { isReadOnlyTable, type Mutation, type OutboxEntry, type SyncTable } from './types';
+import type { Mutation, OutboxEntry, SyncTable } from './types';
 
 /**
  * The mutation queue. EVERY write goes through here (CLAUDE.md rule 8) — there is no
@@ -65,12 +65,6 @@ export function sortByOrder(entries: OutboxEntry[]): OutboxEntry[] {
 }
 
 export async function mutate(input: MutateInput): Promise<string> {
-  // Server-origin data (ADR-0011) — the server would reject it anyway (push/route.ts),
-  // but failing here shows the bug at build time instead of after a round-trip.
-  if (isReadOnlyTable(input.table)) {
-    throw new Error(`${input.table} is read-only — it cannot be mutated through the outbox.`);
-  }
-
   const rowId = input.rowId ?? uuidv7();
   const now = nextTimestamp();
 

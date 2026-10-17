@@ -7,7 +7,6 @@ const PROTECTED_PREFIXES = [
   '/kalender',
   '/routinen',
   '/journal',
-  '/aktivitaeten',
   '/einstellungen',
   '/wetter',
 ];

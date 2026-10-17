@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   FIXED_NOW,
@@ -6,7 +5,6 @@ import {
   openMeteoForecastBody,
   registerPasskey,
   resetAppData,
-  withDb,
 } from './helpers';
 
 /**
@@ -20,8 +18,6 @@ import {
  */
 
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
-const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
-const SYNC_COUNTERS = { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 };
 // Deckt FIXED_NOW (2026-07-18) ab — dieselbe Woche wie seitenkopf.spec.ts.
 const FORECAST_WEEK = [
   '2026-07-15',
@@ -35,7 +31,6 @@ const FORECAST_WEEK = [
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
-  await page.route(GARMIN_SYNC_PATTERN, (route) => route.fulfill({ json: SYNC_COUNTERS }));
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
       json: openMeteoForecastBody({
@@ -58,29 +53,6 @@ async function seedEvent(page: Page, payload: Record<string, unknown>): Promise<
   return page.evaluate(
     (p) => window.__starship.mutate({ table: 'events', op: 'upsert', payload: p }),
     payload,
-  );
-}
-
-/** Trimmed one-off of aktivitaeten.spec.ts's insertGarminActivity — genug Kopfzahlen. */
-async function insertGarminActivity(): Promise<void> {
-  const track = {
-    n: 5,
-    hr: [140, 150, 160, 155, 148],
-    speed: [2.6, 2.9, 3.1, 2.8, 2.7],
-    elevation: [60, 65, 72, 68, 61],
-  };
-  await withDb((client) =>
-    client.query(
-      `INSERT INTO garmin_activities
-        (id, updated_at, deleted_at, synced_at, sync_seq, garmin_activity_id, activity_type, name,
-         started_at, distance_meters, duration_seconds, elapsed_seconds, elevation_gain, elevation_loss,
-         average_hr, max_hr, average_speed, calories, track, map_image, fetched_at)
-       VALUES
-        ($1, now(), NULL, now(), nextval('sync_seq'), $2, 'running', 'Formsprache-Lauf',
-         '2026-07-18T06:30:00Z', 5000, 1750, 1810, 120, 118,
-         150, 178, 2.8, 400, $3, NULL, now())`,
-      [randomUUID(), Math.floor(Math.random() * 1_000_000_000), JSON.stringify(track)],
-    ),
   );
 }
 
@@ -166,13 +138,12 @@ const H1_ROUTES = [
   '/kalender',
   '/routinen',
   '/journal',
-  '/aktivitaeten',
   '/wetter/2026-07-18',
   '/einstellungen',
 ];
 
-// Je Route ein eigener Test statt einer Schleife über alle acht: der Dev-Server
-// kompiliert jede Route beim Erstaufruf on-demand, acht davon nacheinander
+// Je Route ein eigener Test statt einer Schleife über alle sieben: der Dev-Server
+// kompiliert jede Route beim Erstaufruf on-demand, sieben davon nacheinander
 // sprengen das 30-Sekunden-Testfenster. Genau diese Schwäche trägt der bereits
 // gemergte seitenkopf.spec.ts (identische Achter-Schleife, dasselbe `page.goto`)
 // und übersteht sie in CI nur über `retries: 1` — attempt 1 läuft warm, attempt 2
@@ -229,14 +200,14 @@ test('AK3: die große Tages-Temperatur trägt die Rundschrift', async ({ page })
   await assertDisplayRecipe(page.locator('.weather-day__temp-max'), '.weather-day__temp-max');
 });
 
-test('AK3: die Aktivitäten-Kopfzahlen tragen die Rundschrift', async ({ page }) => {
+test('AK3: die Routinen-Kopfzahlen tragen die Rundschrift', async ({ page }) => {
   await installClockAt(page, FIXED_NOW);
   await registerPasskey(page);
-  await insertGarminActivity();
-  await page.goto('/aktivitaeten');
+  // Dieselbe dl/dt/dd-Kopfzahl-Form, die bis #1200 der Aktivitäten-Block trug.
+  await page.goto('/routinen');
   await assertDisplayRecipe(
-    page.locator('.activity-block__stat dd').first(),
-    '.activity-block__stat dd',
+    page.locator('.habit-tiles__value').first(),
+    '.habit-tiles__value',
   );
 });
 

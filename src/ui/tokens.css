@@ -43,7 +43,9 @@
   --area-events: oklch(66% 0.11 195); /* teal — calm, structured */
   --area-journal: oklch(63% 0.14 305); /* warm violet — personal */
   --area-habits: oklch(66% 0.15 148); /* green — growth, streaks */
-  --area-activities: oklch(62% 0.16 260); /* blue — Garmin activities (issue #180) */
+  --area-activities: oklch(62% 0.16 260); /* blue — Swatch-Palette (issue #180; das
+     Aktivitäten-Modul fiel mit #1200 weg, der Token-Name bleibt: gespeicherte
+     Kategoriefarben zeigen darauf) */
   /* teal-cyan, not sky blue: the naheliegende Lücke zwischen Termine (195) und
      Aktivitäten (260) ist von --swatch-sky (228) schon fast mittig besetzt —
      jeder Hue dort bliebe unter 20° Abstand zu einem Nachbarn, unter der
@@ -89,7 +91,6 @@
   --ground-kalender: #6390e1; /* aus #0d55d8 */
   --ground-routinen: #7cc0a3; /* aus #12a67a */
   --ground-journal: #7e67a1; /* aus #4a1d78 */
-  --ground-aktivitaeten: #fac881; /* aus #ffae00 */
   --ground-wetter: #76abd3; /* aus #1c86c4 */
   --ground-einstellungen: #7d858d; /* aus #46525e */
   --ground-anmelden: #fda577; /* aus #ff7300 */
@@ -111,8 +112,6 @@
   --face-ink-routinen: #7a2e00;
   --face-body-journal: #ffce00;
   --face-ink-journal: #4a1d78;
-  --face-body-aktivitaeten: #ffffff;
-  --face-ink-aktivitaeten: #a86a00;
   --face-body-wetter: #ffffff;
   --face-ink-wetter: #14638f;
   --face-body-einstellungen: #ffc44d;

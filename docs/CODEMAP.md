@@ -12,9 +12,8 @@ selben PR nachziehen.
 
 ## Routen-Grobstruktur
 
-`src/app/(app)/`: Übersicht, Aufgaben, Kalender, Routinen, Aktivitäten, Wetter,
-Journal, Einstellungen. Daneben `anmelden/`, `offline/`, `api/` (Auth, Sync,
-Push, Garmin, ICS).
+`src/app/(app)/`: Übersicht, Aufgaben, Kalender, Routinen, Wetter, Journal,
+Einstellungen. Daneben `anmelden/`, `offline/`, `api/` (Auth, Sync, Push, ICS).
 
 ## Bereich → Datei
 
@@ -27,7 +26,7 @@ Push, Garmin, ICS).
 | Kalender & Termine | `docs/codemap/kalender.md` |
 | Journal | `docs/codemap/journal.md` |
 | Routinen | `docs/codemap/routinen.md` |
-| Wetter, Aktivitäten, Garmin | `docs/codemap/wetter-aktivitaeten.md` |
+| Wetter | `docs/codemap/wetter.md` |
 | Einstellungen, Export | `docs/codemap/einstellungen-export.md` |
 | Playwright-Specs | `docs/codemap/tests.md` |
 | Runner, CI, Workflows | `docs/codemap/scripts.md` |

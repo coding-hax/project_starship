@@ -224,7 +224,7 @@ test.describe('offener Tab zieht periodisch und bei Fokus (#29)', () => {
    * AK1 (#528): a caller docking onto an in-flight sync must not be served a pull
    * that started before its own call — even when its outbox is empty, which is the
    * exact condition the old single-`rerun`-flag coalescing dropped (`sync.ts:36`
-   * pre-fix, the Garmin flake in `garmin.spec.ts:130`). Deterministic, no timers:
+   * pre-fix, a flake in a spec with a real network call). Deterministic, no timers:
    * the mount pull is held via `route.fetch()` + a manual gate so the docking call
    * provably lands *during* that pull, not before or after it.
    */

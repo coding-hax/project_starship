@@ -35,7 +35,8 @@ auf `:active` läuft über `--duration-fast`/`--ease-spring`, die globale Regel 
 - **Bottom-Navigation**: fünf sichtbare Plätze, horizontal schiebbar (Karussell) sobald
   mehr Einträge existieren, Reihenfolge in den Einstellungen einstellbar (issue #205).
   Heutige Einträge: Übersicht · Aufgaben · Routinen · Kalender · Journal ·
-  Aktivitäten (sechster Eintrag, issue #180 — löst das Karussell standardmäßig aus).
+  Seit #1200 sind es wieder fünf Einträge, das Karussell greift also erst,
+  wenn ein sechstes Modul dazukommt.
   Einstellungen ist kein Tab. Ab 768px bleibt es eine vertikale Sidebar-Liste ohne
   Karussell — dieselbe Reihenfolge, kein zweites Design.
 - Touch-Ziele mindestens **44 × 44 px**.

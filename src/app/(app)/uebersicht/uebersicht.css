@@ -290,7 +290,7 @@ html:has([data-ground='uebersicht']) .page-head__extra {
  * `grid-row`/`grid-column` an den übrigen Sektionen — Auto-Placement setzt sie
  * in DOM-Reihenfolge in die nächste freie Zelle, genau AK3/AK4: fehlt eine
  * (abgeschaltetes Modul, oder ein Modul im eigenen Ladezustand kurzzeitig ganz
- * ohne Block, siehe events-overview-section.tsx/activity-month-strip.tsx),
+ * ohne Block, siehe events-overview-section.tsx),
  * rückt die nächste ohne Lücke nach, ohne dass diese Regel davon weiß. */
 @media (min-width: 1440px) {
   .uebersicht__sections {

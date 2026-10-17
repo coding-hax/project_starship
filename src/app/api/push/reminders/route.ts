@@ -41,8 +41,7 @@ function resolveNow(request: Request): Date {
 /**
  * Triggered by the GitHub-Actions cron (`Authorization: Bearer <REMINDER_SECRET>`)
  * and, for a manual kick, by a signed-in owner — same auth shape as
- * `/api/garmin-sync` (ADR-0011): a cron run carries no session, so `requireOwner()`
- * alone would lock it out.
+ * a cron run carries no session, so `requireOwner()` alone would lock it out.
  */
 export async function POST(request: Request) {
   const secret = process.env.REMINDER_SECRET;

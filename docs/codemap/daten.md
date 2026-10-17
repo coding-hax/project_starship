@@ -14,7 +14,7 @@
 - `dexie.ts` — IndexedDB: outbox, records, meta, Sonderstores
 - `outbox.ts` / `sync.ts` — Mutations-Queue + Push/Pull
 - `conflict.ts` / `use-live-table.ts` — Konfliktregeln (Delete/Restore/Upsert) + Live-Query
-- `push.ts` / `garmin-sync.ts` / `ics-fetch.ts` — einzige Stellen gegen push/garmin-sync/ics
+- `push.ts` / `ics-fetch.ts` — einzige Stellen gegen push/ics
 
 ## src/auth
 

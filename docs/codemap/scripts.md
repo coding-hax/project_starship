@@ -2,7 +2,7 @@
 
 ## scripts/
 
-- `garmin-bootstrap.md` / `claude-runner.sh` / `runner/cli.ts` / `runner/*.test.ts` — OAuth1-Handgriff; Bash-Einstieg+TS-Dispatcher, Vitest-Suiten
+- `claude-runner.sh` / `runner/cli.ts` / `runner/*.test.ts` — Bash-Einstieg+TS-Dispatcher, Vitest-Suiten
 - `runner/{gh,git,state,clock,time}.ts` — Adapter, injizierbar für Vitest
 - `runner/{queue,tier,escalation,cap,pr,catchup}.ts` — Queue, Eskalation, Deckel, PR-Zustand
 - `runner/{watch,select,status,ak}.ts` — CI-Wache, Ticketauswahl, Status, AK-Parser
@@ -18,4 +18,4 @@
 ## .github/workflows/
 
 - `ci.yml` / `guards.yml` — Lint/Typecheck/Vitest/Playwright, Test-Integrity-Gate
-- `smoke.yml` / `garmin-sync.yml` / `reminders.yml` — Post-Deploy-Smoke (Auto-Revert); Cron Garmin-Sync/Push-Reminder
+- `smoke.yml` / `reminders.yml` — Post-Deploy-Smoke (Auto-Revert); Cron Push-Reminder

@@ -34,12 +34,9 @@ export async function readChangesSince(
     const entry = SYNC_REGISTRY[name] as {
       table: typeof SYNC_REGISTRY.tasks.table;
       writable: readonly string[];
-      readable?: readonly string[];
     };
     const table = entry.table;
-    // A read-only table (ADR-0011) has no writable fields to fall back to — pull
-    // projects its own `readable` list instead.
-    const projection = entry.readable ?? entry.writable;
+    const projection = entry.writable;
 
     const rows = await executor
       .select()

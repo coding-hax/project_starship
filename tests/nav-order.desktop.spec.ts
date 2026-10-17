@@ -40,8 +40,8 @@ test.describe('Karussell-Fix wirkt sich nicht auf die Sidebar aus (issue #229 AC
     });
     await registerPasskey(page);
 
-    await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Aktivitäten' }).click();
-    await expect(page).toHaveURL(/\/aktivitaeten$/);
+    await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('link', { name: 'Journal' }).click();
+    await expect(page).toHaveURL(/\/journal$/);
 
     const calls = await page.evaluate(() => (window as unknown as { __scrollToCalls: unknown[] }).__scrollToCalls);
     expect(calls.length).toBe(0);

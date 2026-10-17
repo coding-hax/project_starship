@@ -5,7 +5,7 @@
  *
  * Der Schwellwert stammt aus dem Wetter-Fall: zwei vergebliche Anläufe seines
  * 3h-Fensters. Für Aktivitäten (30-Minuten-Fenster) sind acht Stunden entsprechend
- * großzügiger — bewusst, denn eine Uhr, die einen Tag lang nicht mit Garmin Connect
+ * großzügiger — bewusst, denn eine Quelle, die einen Tag lang nicht
  * gesprochen hat, ist kein Fehler der App.
  */
 const STALE_WARNING_THRESHOLD_MS = 8 * 60 * 60 * 1000;

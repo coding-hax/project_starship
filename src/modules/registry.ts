@@ -1,4 +1,3 @@
-import { ActivityMonthStrip } from '@/features/activities/activity-month-strip';
 import { EventsOverviewSection } from '@/features/events/events-overview-section';
 import { ExportPanel } from '@/features/export/export-panel';
 import { HabitsOverviewSection } from '@/features/habits/habits-overview-section';
@@ -9,7 +8,7 @@ import { RoutinesSettingsPanel } from '@/features/settings/routines-settings-pan
 import { WeatherPanel } from '@/features/settings/weather-panel';
 import { TasksOverviewSection } from '@/features/tasks/tasks-overview-section';
 import { WeatherForecast } from '@/features/weather/weather-forecast';
-import { IconActivity, IconCalendar, IconHabits, IconJournal, IconTasks, IconToday } from '@/ui/icons';
+import { IconCalendar, IconHabits, IconJournal, IconTasks, IconToday } from '@/ui/icons';
 import type { ComponentType } from 'react';
 
 export interface NavItem {
@@ -110,20 +109,6 @@ export const MODULES: readonly ModuleDefinition[] = [
     },
     SettingsPanel: JournalSettingsPanel,
     routes: ['/journal'],
-  },
-  {
-    id: 'aktivitaeten',
-    label: 'Aktivitäten',
-    core: false,
-    navItem: {
-      id: 'aktivitaeten',
-      href: '/aktivitaeten',
-      label: 'Aktivitäten',
-      accent: 'var(--area-activities)',
-      Icon: IconActivity,
-    },
-    OverviewSection: ActivityMonthStrip,
-    routes: ['/aktivitaeten'],
   },
   { id: 'wetter', label: 'Wetter', core: false, OverviewSection: WeatherForecast, SettingsPanel: WeatherPanel },
   { id: 'export', label: 'Export', core: false, SettingsPanel: ExportPanel },

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { getTableColumns, getTableName } from 'drizzle-orm';
+import type { PgTable } from 'drizzle-orm/pg-core';
 import {
   authChallenges,
   authRateLimits,
@@ -7,8 +8,6 @@ import {
   credentials,
   eventExceptions,
   events,
-  garminActivities,
-  garminTokens,
   habitFreezes,
   habitLogs,
   habits,
@@ -35,7 +34,7 @@ import { withDb } from './helpers';
  *
  * New table in schema.ts? Add it here too.
  */
-const tables = [
+const tables: PgTable[] = [
   syncState,
   tasks,
   habits,
@@ -47,8 +46,6 @@ const tables = [
   authRateLimits,
   recoveryCodes,
   pushSubscriptions,
-  garminActivities,
-  garminTokens,
   reminderSends,
   reminderPrefs,
   journalEntries,

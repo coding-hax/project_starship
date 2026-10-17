@@ -1,7 +1,7 @@
 /**
  * The one place feature code speaks to `/api/ics` (issue #560, ADR-0022) —
  * check-sync-invariants.sh only excuses `src/local/**`, same reasoning as
- * `garmin-sync.ts` for `/api/garmin-sync`. The proxy itself does the SSRF
+ * `push.ts` for `/api/push`. The proxy itself does the SSRF
  * validation (`src/app/api/ics/route.ts`); this is just the thin client call.
  */
 

@@ -16,7 +16,7 @@ import { registerPasskey, resetAppData, skewClock } from './helpers';
  * zum gemeinsamen Enthüllungspunkt mehr), die Streak-Karte zog auf
  * /routinen um.
  *
- * Das Ladefenster ist ein Tick, kein Netz-Roundtrip (`aktivitaeten.spec.ts` hält
+ * Das Ladefenster ist ein Tick, kein Netz-Roundtrip (`uebersicht.spec.ts` hält
  * das schon fest: „nothing to gate it open long enough to observe on a real
  * page"). Eine „miss Position, warte, miss nochmal"-Prüfung liefe deshalb immer
  * erst im eingeschwungenen Zustand und wäre auch ohne Fix grün. Gemessen wird

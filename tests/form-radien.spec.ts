@@ -9,17 +9,11 @@ import { openMeteoForecastBody, registerPasskey, resetAppData } from './helpers'
  */
 
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
-const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   // /uebersicht und /aktivitaeten lösen beim Laden echte Netzaufrufe aus, die
   // ungemockt als Konsolenfehler/Dev-Overlay im DOM landen (siehe grundfarbe.spec.ts).
-  await page.route(GARMIN_SYNC_PATTERN, (route) =>
-    route.fulfill({
-      json: { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 },
-    }),
-  );
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
       json: openMeteoForecastBody({ dates: ['2026-07-18'], tempsMax: [20], tempsMin: [10] }),

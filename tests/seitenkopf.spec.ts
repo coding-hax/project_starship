@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   FIXED_NOW,
@@ -6,7 +5,6 @@ import {
   openMeteoForecastBody,
   registerPasskey,
   resetAppData,
-  withDb,
 } from './helpers';
 
 /**
@@ -17,8 +15,6 @@ import {
  */
 
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
-const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
-const SYNC_COUNTERS = { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 };
 // Volle Woche statt eines einzelnen Tages: useWeatherForecast cached die erste
 // Antwort und fetcht erst nach REFRESH_INTERVAL_MS neu (ADR-0009) — ein zweiter,
 // anders gemockter /uebersicht-Besuch später im selben Test würde die alten
@@ -43,9 +39,8 @@ const EYEBROW_DATE_FORMATTER = new Intl.DateTimeFormat('de-DE', {
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
-  // Wie grundfarbe.spec.ts: /uebersicht und /aktivitaeten lösen beim Laden echte
-  // Netzaufrufe aus, die ungemockt als Konsolenfehler/Dev-Overlay im DOM landen.
-  await page.route(GARMIN_SYNC_PATTERN, (route) => route.fulfill({ json: SYNC_COUNTERS }));
+  // Wie grundfarbe.spec.ts: /uebersicht löst beim Laden einen echten
+  // Netzaufruf aus, der ungemockt als Konsolenfehler/Dev-Overlay im DOM landet.
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
       json: openMeteoForecastBody({
@@ -82,30 +77,6 @@ async function seedEvent(page: Page, payload: Record<string, unknown>): Promise<
   return page.evaluate(
     (p) => window.__starship.mutate({ table: 'events', op: 'upsert', payload: p }),
     payload,
-  );
-}
-
-/** Trimmed one-off of aktivitaeten.spec.ts's insertGarminActivity — genug Track-Punkte
- * für alle drei Kurven (HF/Pace/Höhe), Rest bewusst minimal. */
-async function insertGarminActivity(): Promise<void> {
-  const track = {
-    n: 5,
-    hr: [140, 150, 160, 155, 148],
-    speed: [2.6, 2.9, 3.1, 2.8, 2.7],
-    elevation: [60, 65, 72, 68, 61],
-  };
-  await withDb((client) =>
-    client.query(
-      `INSERT INTO garmin_activities
-        (id, updated_at, deleted_at, synced_at, sync_seq, garmin_activity_id, activity_type, name,
-         started_at, distance_meters, duration_seconds, elapsed_seconds, elevation_gain, elevation_loss,
-         average_hr, max_hr, average_speed, calories, track, map_image, fetched_at)
-       VALUES
-        ($1, now(), NULL, now(), nextval('sync_seq'), $2, 'running', 'Sonde-Lauf',
-         '2026-07-20T06:30:00Z', 5000, 1750, 1810, 120, 118,
-         150, 178, 2.8, 400, $3, NULL, now())`,
-      [randomUUID(), Math.floor(Math.random() * 1_000_000_000), JSON.stringify(track)],
-    ),
   );
 }
 
@@ -197,10 +168,6 @@ const HEADERS: HeaderCase[] = [
     header: (page) => page.getByRole('heading', { level: 1, name: 'Routinen' }),
   },
   { path: '/journal', header: (page) => page.locator('.journal-page__title-row') },
-  {
-    path: '/aktivitaeten',
-    header: (page) => page.getByRole('heading', { level: 1, name: 'Aktivitäten' }),
-  },
   { path: '/wetter/2026-07-18', header: (page) => page.locator('.weather-day__topbar') },
   { path: '/einstellungen', header: (page) => page.locator('.einstellungen__topbar') },
 ];
@@ -288,7 +255,7 @@ test('AK3: der Fortschrittsring steht im Fluss neben dem Titel, nicht absolut da
   expect(overlaps, 'Titel und Ring überlappen sich nicht').toBe(false);
 });
 
-test('AK4: die tatsächlich vorhandenen Angaben bleiben stehen — Aufgaben-Hinweis, Aktivitäts-Kurven, Habit-Zwischenstand, Kalender-Leerzustand', async ({
+test('AK4: die tatsächlich vorhandenen Angaben bleiben stehen — Aufgaben-Hinweis, Habit-Zwischenstand, Kalender-Leerzustand', async ({
   page,
 }) => {
   await installClockAt(page, FIXED_NOW); // Saturday, 2026-07-18
@@ -299,11 +266,6 @@ test('AK4: die tatsächlich vorhandenen Angaben bleiben stehen — Aufgaben-Hinw
   await page.goto('/aufgaben');
   await seedTask(page, { title: 'AK4 Nur heute', dueAt: FIXED_NOW });
   await expect(page.getByText('Danach nichts mehr geplant.')).toBeVisible();
-
-  // Aktivitäten: die drei Kurven (Herzfrequenz/Pace/Höhenprofil, activity-block.tsx).
-  await insertGarminActivity();
-  await page.goto('/aktivitaeten');
-  await expect(page.locator('.activity-chart__svg path')).toHaveCount(3);
 
   // Routinen: „N von M"-Zwischenstand lebt in der Übersicht-Habit-Sektion
   // (habit-today.tsx:97), nicht auf /routinen selbst.
@@ -327,7 +289,7 @@ test('AK4: die tatsächlich vorhandenen Angaben bleiben stehen — Aufgaben-Hinw
   await expect(page.getByText('Keine Termine an diesem Tag.')).toBeVisible();
 });
 
-test('AK5: die Kopfzeile selbst läuft auf keiner der neun Routen über (375×812)', async ({
+test('AK5: die Kopfzeile selbst läuft auf keiner der acht Routen über (375×812)', async ({
   page,
 }) => {
   await registerPasskey(page);
@@ -337,7 +299,7 @@ test('AK5: die Kopfzeile selbst läuft auf keiner der neun Routen über (375×81
   }
 });
 
-test('Titelgrößen: h1 ist überall 22px, Aktivitäten 26px, Wetter-Temperatur 40px', async ({
+test('Titelgrößen: h1 ist überall 22px, Wetter-Temperatur 40px', async ({
   page,
 }) => {
   await registerPasskey(page);
@@ -364,12 +326,6 @@ test('Titelgrößen: h1 ist überall 22px, Aktivitäten 26px, Wetter-Temperatur 
     await page.goto(path);
     expect(await fontSizeOf(heading(page)), `Titelgröße auf ${path}`).toBe(22);
   }
-
-  await page.goto('/aktivitaeten');
-  expect(
-    await fontSizeOf(page.getByRole('heading', { level: 1, name: 'Aktivitäten' })),
-    'Titelgröße Aktivitäten',
-  ).toBe(26);
 
   // Wetter-Temperatur liest den gecachten Vorhersage-Tag, nicht einen eigenen
   // Netzaufruf (AC „kein eigener Netzaufruf") — /uebersicht wärmt den Dexie-Cache
@@ -506,24 +462,22 @@ test('AK2 (#928): die Figur steht rechts außen in der Journal-Titelzeile, der T
   expect(textToFace).toBeGreaterThan(faceToRightEdge + 10);
 });
 
-test('AK6 (#861): die Augenbraue erfüllt 4,5:1 gegen den Aktivitäten-Grund, Hell und Dunkel', async ({
+test('AK6 (#861): die Augenbraue erfüllt 4,5:1 gegen den Routinen-Grund, Hell und Dunkel', async ({
   page,
 }) => {
   await registerPasskey(page);
   // Genügt für den "befüllten" Kopf: der Zustand hängt an activities.length, nicht
-  // am 30-Tage-Fenster -- die Augenbraue rendert auch, wenn die eine Aktivität aus
   // dem Recap-Fenster fällt (siehe activity-list.tsx).
-  await insertGarminActivity();
-  await page.goto('/aktivitaeten');
+  await page.goto('/routinen');
 
-  const eyebrow = page.locator('[data-module="aktivitaeten"] .page-head__eyebrow');
+  const eyebrow = page.locator('[data-ground="routinen"] .page-head__eyebrow');
   await expect(eyebrow).toBeVisible();
 
   const lightColor = await elementColor(eyebrow);
   const lightGround = await htmlBackground(page);
   expect(
     contrastRatio(await toRgb(page, lightColor), await toRgb(page, lightGround)),
-    'Augenbraue auf /aktivitaeten (hell)',
+    'Augenbraue auf /routinen (hell)',
   ).toBeGreaterThanOrEqual(4.5);
 
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -531,7 +485,7 @@ test('AK6 (#861): die Augenbraue erfüllt 4,5:1 gegen den Aktivitäten-Grund, He
   const darkGround = await htmlBackground(page);
   expect(
     contrastRatio(await toRgb(page, darkColor), await toRgb(page, darkGround)),
-    'Augenbraue auf /aktivitaeten (dunkel)',
+    'Augenbraue auf /routinen (dunkel)',
   ).toBeGreaterThanOrEqual(4.5);
 });
 

@@ -7,18 +7,9 @@ import { FIXED_NOW, installClockAt, registerPasskey, resetAppData, skewClock } f
  */
 
 const OPEN_METEO_PATTERN = 'https://api.open-meteo.com/**';
-const GARMIN_SYNC_PATTERN = '**/api/garmin-sync';
 
 test.beforeEach(async ({ page }) => {
   await resetAppData();
-  // issue #230/memory: /aktivitaeten stößt beim Öffnen /api/garmin-sync an, ungemockt
-  // 503 landet als Dev-Overlay-Badge im DOM. /uebersicht holt Wetter — ungemockt
-  // leckt der echte Fetch in jeden Test, der diese Route besucht.
-  await page.route(GARMIN_SYNC_PATTERN, (route) =>
-    route.fulfill({
-      json: { scanned: 0, created: 0, updated: 0, detailsFilled: 0, mapsFilled: 0 },
-    }),
-  );
   await page.route(OPEN_METEO_PATTERN, (route) =>
     route.fulfill({
       json: {
@@ -168,7 +159,7 @@ interface RouteCase {
   heading: (page: Page) => Locator;
 }
 
-// The eight authenticated routes — Anmelden needs a logged-out context and gets its
+// The seven authenticated routes — Anmelden needs a logged-out context and gets its
 // own describe block below, sharing this same table's shape.
 const ROUTES: RouteCase[] = [
   {
@@ -207,12 +198,6 @@ const ROUTES: RouteCase[] = [
     heading: (page) => page.getByRole('heading', { level: 1, name: 'Wie war dein Tag?' }),
   },
   {
-    ground: 'aktivitaeten',
-    path: '/aktivitaeten',
-    ink: '--on-accent',
-    heading: (page) => page.getByRole('heading', { level: 1, name: 'Aktivitäten' }),
-  },
-  {
     ground: 'wetter',
     path: '/wetter/2026-07-18',
     ink: '--on-accent',
@@ -233,7 +218,7 @@ const ROUTES: RouteCase[] = [
   },
 ];
 
-test('AK1: jede der neun Routen rendert ihren Seitengrund vollflächig', async ({ page }) => {
+test('AK1: jede der acht Routen rendert ihren Seitengrund vollflächig', async ({ page }) => {
   await registerPasskey(page);
 
   const bgToken = await resolveColorToken(page, '--bg');
@@ -270,11 +255,11 @@ test('AK2: Text auf dem Grund erfüllt 4,5:1, Gold trägt dunkle Tinte statt Wei
     ).toBeGreaterThanOrEqual(4.5);
   }
 
-  // AK2 explizit: Gold (Aktivitäten) trägt --on-accent, nicht Weiß.
-  await page.goto('/aktivitaeten');
+  // AK2 explizit: Türkis (Kalender) trägt --on-accent, nicht Weiß.
+  await page.goto('/kalender');
   const onAccent = await resolveColorToken(page, '--on-accent');
   const onGroundLight = await resolveColorToken(page, '--on-ground-light');
-  const heading = page.getByRole('heading', { level: 1, name: 'Aktivitäten' });
+  const heading = page.locator('.calendar-view__heading');
   expect(await elementColor(heading)).toBe(onAccent);
   expect(await elementColor(heading)).not.toBe(onGroundLight);
 
@@ -385,7 +370,7 @@ test('AK5: Karten setzen den Textkontext zurück, dieselbe Klasse liegt auf Grun
 });
 
 test.describe('#846: Kanten auf dem Grund erfüllen 3:1 (WCAG 1.4.11)', () => {
-  test('AK3/AK5 hell: --border und --border-strong erfüllen 3:1 gegen den Grund auf allen acht Routen', async ({
+  test('AK3/AK5 hell: --border und --border-strong erfüllen 3:1 gegen den Grund auf allen sieben Routen', async ({
     page,
   }) => {
     await registerPasskey(page);
@@ -405,7 +390,7 @@ test.describe('#846: Kanten auf dem Grund erfüllen 3:1 (WCAG 1.4.11)', () => {
     }
   });
 
-  test('AK3/AK5 dunkel: --border und --border-strong erfüllen 3:1 gegen den Grund auf allen acht Routen', async ({
+  test('AK3/AK5 dunkel: --border und --border-strong erfüllen 3:1 gegen den Grund auf allen sieben Routen', async ({
     page,
   }) => {
     await registerPasskey(page);

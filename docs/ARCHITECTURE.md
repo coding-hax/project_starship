@@ -82,14 +82,10 @@ habits          id, name, schedule (daily|weekly|custom), color, emoji, archived
                 ← `color` bleibt in Schema/Daten stehen, wird seit #1101 aber nicht mehr gelesen
 habit_logs      id, habit_id, log_date, done, ...
 sync_state      key, value            ← letzter Pull-Cursor (sync_seq) etc.
-garmin_activities  id, garmin_activity_id, activity_type, started_at, distance_meters,
-                   duration_seconds, elevation_gain/loss, average_hr, max_hr,
-                   average_speed, calories, track, map_image, ...  ← read-only (ADR-0011)
-garmin_tokens      id, kind, token, expires_at, ...  ← nie synchronisiert (ADR-0011)
 ```
 
-Alle Tabellen tragen die fünf Pflicht-Spalten oben, außer `garmin_tokens` — wie die
-Auth-Tabellen unten synchronisiert es nie und trägt deshalb keine.
+Alle Tabellen tragen die fünf Pflicht-Spalten oben. Die Auth-Tabellen
+synchronisieren nie und tragen deshalb keine.
 Es gibt **keine** Felder für externe Kalender (`external_uid`, `etag`, `calendar_links`) —
 die App ist die alleinige Wahrheit für ihre Termine (siehe ADR-0002).
 
@@ -126,18 +122,6 @@ oder Google (ADR-0002). Konsequenzen für die Architektur:
 
 Der GitHub-Actions-Cron läuft für terminierte Web-Push-Erinnerungen (`reminders.yml`);
 ein Backup-Cron ist (Stand heute) nicht angelegt, siehe unten.
-
-## Garmin: read-only Server-Origin-Daten
-
-Aktivitäten (ADR-0011) sind die erste Tabelle, die der Sync **liest, aber nie
-schreibt**: `GET /api/garmin-sync` (GitHub-Actions-Cron, Shared Secret) holt sie von
-`connectapi.garmin.com`, legt sie in Postgres ab, von dort laufen sie über den
-normalen Pull wie jede andere Tabelle. Der `SYNC_REGISTRY`-Eintrag trägt
-`readOnly: true` und eine eigene `readable`-Feldliste (statt `writable`); `pull`
-projiziert über `readable ?? writable`, `push` weist jede Mutation auf eine
-read-only-Tabelle vor jedem DB-Zugriff ab (`src/local/types.ts`:
-`isReadOnlyTable`). `garmin_tokens` läuft nie durch den Sync — wie die Auth-Tabellen
-kein Registry-Eintrag, kein `syncColumns`.
 
 ## Security
 

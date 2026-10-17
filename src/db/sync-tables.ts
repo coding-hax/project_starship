@@ -3,7 +3,6 @@ import {
   categoryColors,
   eventExceptions,
   events,
-  garminActivities,
   habitLogs,
   habits,
   journalEntries,
@@ -22,14 +21,7 @@ import {
  * `required` are the NOT NULL columns without a default. A mutation that creates a
  * row must carry them, or the insert dies at the database with a 500. We'd rather
  * reject it at the door with a 400.
- *
- * `readOnly` + `readable` mark a table the sync engine only ever pulls from
- * (ADR-0011): `writable`/`required` stay empty on purpose — a table cannot be
- * "read-only but insertable" — and `readable` is the pull projection instead. Never
- * expressed as `writable: []` alone, because that would still let a create/update
- * mutation through with an empty payload and tombstone a row via `deletedAt`; the
- * actual rejection happens in `push`/`outbox.mutate()` via `isReadOnlyTable()`.
- */
+ * */
 export const SYNC_REGISTRY = {
   sync_state: {
     table: syncState,
@@ -108,38 +100,12 @@ export const SYNC_REGISTRY = {
     writable: ['category', 'color'],
     required: ['category', 'color'],
   },
-  garmin_activities: {
-    table: garminActivities,
-    writable: [],
-    required: [],
-    readOnly: true,
-    readable: [
-      'garminActivityId',
-      'activityType',
-      'name',
-      'startedAt',
-      'distanceMeters',
-      'durationSeconds',
-      'elapsedSeconds',
-      'elevationGain',
-      'elevationLoss',
-      'averageHr',
-      'maxHr',
-      'averageSpeed',
-      'calories',
-      'track',
-      'mapImage',
-      'fetchedAt',
-    ],
-  },
 } as const satisfies Record<
   SyncTable,
   {
     table: unknown;
     writable: readonly string[];
     required: readonly string[];
-    readOnly?: boolean;
-    readable?: readonly string[];
   }
 >;
 

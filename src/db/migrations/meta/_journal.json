@@ -183,6 +183,13 @@
       "when": 1788843824619,
       "tag": "0025_needy_hobgoblin",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792247402687,
+      "tag": "0026_garmin_ausbau",
+      "breakpoints": true
     }
   ]
 }

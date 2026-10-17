@@ -32,11 +32,6 @@
 @import '../features/settings/weather-panel.css';
 @import '../features/settings/nav-order-panel.css';
 @import '../features/settings/routines-settings-panel.css';
-@import '../features/activities/activity-list.css';
-@import '../features/activities/activity-block.css';
-@import '../features/activities/activity-map.css';
-@import '../features/activities/activity-chart.css';
-@import '../features/activities/activity-month-strip.css';
 @import '../features/events/calendar-strip.css';
 @import '../features/events/month-grid.css';
 @import '../features/events/event-agenda.css';
@@ -182,16 +177,6 @@ html:has([data-ground='journal']) {
   --arc-3: #905183;
   --face-body: var(--face-body-journal);
   --face-ink: var(--face-ink-journal);
-}
-html:has([data-ground='aktivitaeten']) {
-  --ground: var(--ground-aktivitaeten);
-  --on-ground: var(--on-accent);
-  --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
-  --arc-1: #fff0e5;
-  --arc-2: #e69d00;
-  --arc-3: #fbfa93;
-  --face-body: var(--face-body-aktivitaeten);
-  --face-ink: var(--face-ink-aktivitaeten);
 }
 html:has([data-ground='wetter']) {
   --ground: var(--ground-wetter);
@@ -346,15 +331,6 @@ html:has([data-ground='anmelden']) {
        85 % — genug Spielraum für die gedämpfte Stufe. */
     --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
   }
-  :root:not([data-theme='hell']):has([data-ground='aktivitaeten']) {
-    --ground: color-mix(in oklab, var(--ground-aktivitaeten) 50%, var(--ground-base-dark));
-    --arc-1: #827062;
-    --arc-2: #9d6900;
-    --arc-3: #7a7700;
-    /* Anders als im Hellmodus (oben, 9,46:1 bei 85 %): hier nur 4,16:1 bei
-       85 % — unter 4,5:1, deshalb ungedämpft. */
-    --on-ground-muted: var(--on-ground);
-  }
   :root:not([data-theme='hell']):has([data-ground='wetter']) {
     --ground: color-mix(in oklab, var(--ground-wetter) 62%, var(--ground-base-dark));
     --arc-1: #5c7784;
@@ -414,13 +390,6 @@ html:has([data-ground='anmelden']) {
   --arc-2: #3d0a68;
   --arc-3: #7f4274;
   --on-ground-muted: color-mix(in oklab, var(--on-ground) 85%, var(--ground));
-}
-:root[data-theme='dunkel']:has([data-ground='aktivitaeten']) {
-  --ground: color-mix(in oklab, var(--ground-aktivitaeten) 50%, var(--ground-base-dark));
-  --arc-1: #827062;
-  --arc-2: #9d6900;
-  --arc-3: #7a7700;
-  --on-ground-muted: var(--on-ground);
 }
 :root[data-theme='dunkel']:has([data-ground='wetter']) {
   --ground: color-mix(in oklab, var(--ground-wetter) 62%, var(--ground-base-dark));
@@ -511,7 +480,7 @@ h1 {
      einem höheren Element sitzt (/journal: h1 mittig neben der 42px-PageFace-Figur),
      wo sie die Zeilen-scrollHeight um 1–2px kippt. Deshalb symmetrisch, nicht nur
      unten: padding-block fasst die Inhaltsfläche oben und unten mit Reserve. em, nicht
-     px — die Metrik skaliert mit dem Grad (26px auf /aktivitaeten). Auf Apple
+     px — die Metrik skaliert mit dem Grad (26px auf /journal). Auf Apple
      (ui-rounded/SF Pro Rounded) ist die Reserve unsichtbar. Kein overflow:clip/hidden
      — verborgener Inhalt zählt weiter zur scrollHeight, der Test bliebe rot. */
   padding-block: 0.2em;
@@ -568,7 +537,6 @@ h3 {
 html[data-modules-off~='aufgaben'] [data-module='aufgaben'],
 html[data-modules-off~='routinen'] [data-module='routinen'],
 html[data-modules-off~='kalender'] [data-module='kalender'],
-html[data-modules-off~='journal'] [data-module='journal'],
-html[data-modules-off~='aktivitaeten'] [data-module='aktivitaeten'] {
+html[data-modules-off~='journal'] [data-module='journal'] {
   display: none;
 }

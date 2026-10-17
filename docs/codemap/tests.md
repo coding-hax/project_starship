@@ -22,4 +22,4 @@
 - `routinen.wide.spec.ts` — ab 1440px Tabelle links über beide Zeilen, Kacheln+Verlauf rechts 440px
 - `journal.spec.ts` / `journal-{suche,tageswechsel,jahre}.spec.ts` — Einträge, Suche, Tageswechsel, „An diesem Tag"
 - `journal-{recovery,recovery-reissue,key-race}.spec.ts` — Recovery-Kit, Key neu ausstellen, Erst-Setup-Race
-- `garmin.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` / `modules.spec.ts` — Pull, Reminder, Push-Panel, Modul-Panel/Route-Guard
+- `push-reminders.spec.ts` / `reminder-prefs.spec.ts` / `modules.spec.ts` — Reminder, Push-Panel, Modul-Panel/Route-Guard

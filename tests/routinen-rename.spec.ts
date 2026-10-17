@@ -85,11 +85,10 @@ test('eine gespeicherte Nav-Reihenfolge mit der Alt-ID behält ihre Position (AC
     'aufgaben',
     'kalender',
     'journal',
-    'aktivitaeten',
   ]);
 
   const labels = await nav.locator('.nav__label').allInnerTexts();
-  expect(labels).toEqual(['Übersicht', 'Routinen', 'Aufgaben', 'Kalender', 'Journal', 'Aktivitäten']);
+  expect(labels).toEqual(['Übersicht', 'Routinen', 'Aufgaben', 'Kalender', 'Journal']);
 });
 
 test('ein unter der Alt-ID abgeschaltetes Modul bleibt abgeschaltet (AC5)', async ({ page }) => {
