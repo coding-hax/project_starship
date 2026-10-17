@@ -456,7 +456,7 @@ test.describe('#846: Kanten auf dem Grund erfüllen 3:1 (WCAG 1.4.11)', () => {
     ).toBeGreaterThanOrEqual(3);
   });
 
-  test('AK2: gefüllte Ring-Spur erfüllt 3:1 gegen den Übersicht-Grund im Hellmodus, Füllung ≠ Spur. Heute 1,01:1', async ({
+  test('AK2: gefüllte Zählpillen-Spur erfüllt 3:1 gegen die eigene Spur (seit #1197 auf der Pillenfläche statt dem Übersicht-Grund), Füllung ≠ Spur', async ({
     page,
   }) => {
     await registerPasskey(page);
@@ -464,20 +464,19 @@ test.describe('#846: Kanten auf dem Grund erfüllen 3:1 (WCAG 1.4.11)', () => {
     const dueToday = '2026-07-18T18:00:00.000Z';
     await skewClock(page, now);
     await page.goto('/uebersicht');
-    await seedTask(page, { title: 'Kanten-Sonde Ring', dueAt: dueToday });
+    await seedTask(page, { title: 'Kanten-Sonde Zählpille', dueAt: dueToday });
 
-    const ring = page.locator('.daily-progress-ring');
-    await expect(ring).toBeVisible();
-    const fillColor = await ring
-      .locator('.daily-progress-ring__fill')
-      .evaluate((el) => getComputedStyle(el).stroke);
-    const trackColor = await ring
-      .locator('.daily-progress-ring__track')
-      .evaluate((el) => getComputedStyle(el).stroke);
-    const ground = await htmlBackground(page);
+    const meter = page.locator('.daily-progress-meter');
+    await expect(meter).toBeVisible();
+    const fillColor = await meter
+      .locator('.daily-progress-meter__fill')
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+    const trackColor = await meter
+      .locator('.daily-progress-meter__track')
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
 
     expect(
-      contrastRatio(await toRgb(page, fillColor), await toRgb(page, ground)),
+      contrastRatio(await toRgb(page, fillColor), await toRgb(page, trackColor)),
     ).toBeGreaterThanOrEqual(3);
     expect(await toRgb(page, fillColor)).not.toEqual(await toRgb(page, trackColor));
   });

@@ -9,7 +9,7 @@ const TOMORROW_MORNING = '2026-07-16T09:00:00.000Z';
 const MODULES_OFF_KEY = 'starship:modules-off';
 
 function ring(page: Page) {
-  return page.locator('.daily-progress-ring');
+  return page.locator('.daily-progress-meter');
 }
 
 async function seedTask(page: Page, payload: Record<string, unknown>): Promise<string> {
@@ -171,7 +171,7 @@ test('Ring auf Mobile und Desktop, tabular-nums, Dark Mode und reduzierte Bewegu
     await expect(ring(page)).toHaveText('0/1');
   }
 
-  const label = ring(page).locator('.daily-progress-ring__count');
+  const label = ring(page).locator('.daily-progress-meter__count');
   const lightNums = await label.evaluate((el) => getComputedStyle(el).fontVariantNumeric);
   expect(lightNums).toContain('tabular-nums');
   const lightColor = await label.evaluate((el) => getComputedStyle(el).color);
@@ -184,10 +184,10 @@ test('Ring auf Mobile und Desktop, tabular-nums, Dark Mode und reduzierte Bewegu
   expect(darkColor).not.toBe(lightColor);
 
   // No animation ships in this ticket (fill-animation polish is #418) — the fill
-  // circle must not carry a transition/animation that reduced motion would need
+  // bar must not carry a transition/animation that reduced motion would need
   // to zero out.
   const fillTransition = await ring(page)
-    .locator('.daily-progress-ring__fill')
+    .locator('.daily-progress-meter__fill')
     .evaluate((el) => getComputedStyle(el).transitionDuration);
   expect(parseFloat(fillTransition)).toBeLessThan(0.001);
 });
