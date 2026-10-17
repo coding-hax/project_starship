@@ -29,11 +29,12 @@ test.beforeEach(async ({ page }) => {
   await registerPasskey(page);
 });
 
-test('Auslieferungszustand: alle Module an, sechs Tabs sichtbar (issue #307 AC1)', async ({ page }) => {
+test('Auslieferungszustand: alle Module an, fünf Tabs sichtbar (issue #307 AC1)', async ({ page }) => {
   await page.goto('/uebersicht');
 
+  // Fünf seit #1200 — Aktivitäten war der sechste.
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-  await expect(nav.locator('.nav__item')).toHaveCount(6);
+  await expect(nav.locator('.nav__item')).toHaveCount(5);
 });
 
 test('ein Modul abschalten blendet seinen Tab aus, ohne die übrigen zu verändern (issue #307 AC2)', async ({
@@ -113,7 +114,7 @@ test('wieder anschalten stellt den Tab an derselben Position wieder her (issue #
   await expect(nav.getByRole('link', { name: 'Kalender' })).toHaveCount(0);
 
   await page.getByRole('switch', { name: 'Kalender' }).click();
-  await expect(nav.locator('.nav__label')).toHaveCount(6);
+  await expect(nav.locator('.nav__label')).toHaveCount(5);
   const labelsAfter = await nav.locator('.nav__label').allInnerTexts();
   expect(labelsAfter).toEqual(labelsBefore);
 });
@@ -189,7 +190,7 @@ test('ein zuvor abgeschaltetes Modul bleibt über einen frischen Ausschlussschl�
 
   const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
   await expect(nav.getByRole('link', { name: 'Aufgaben' })).toHaveCount(0);
-  await expect(nav.locator('.nav__item')).toHaveCount(5);
+  await expect(nav.locator('.nav__item')).toHaveCount(4);
 });
 
 /* -------------------------------------------------------------------------- */
