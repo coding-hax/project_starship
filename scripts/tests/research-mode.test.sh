@@ -212,11 +212,43 @@ assert_not_contains() {
 # Teilzeichenkette "Bash" und wuerde einen naiven Substring-Test faelschlich
 # rot faerben. Hier zaehlt nur ein *bare* "Bash"-Tool, durch Komma/Zeilenende
 # begrenzt (#63).
+#
+# #1218: reads only the value after --allowedTools. The permission is what #63
+# guards; --tools names a bare "Bash" on purpose (tool definitions, not
+# permissions). A missing --allowedTools value now fails instead of passing.
 assert_no_bare_bash() {   # $1 = Beschreibung, $2 = Datei
-  if [ ! -f "$2" ] || ! grep -Eq -- '(^|,)Bash(,|$)' "$2"; then
+  local allowed
+  allowed=$(arg_after "$2" --allowedTools)
+  if [ -n "$allowed" ] && ! printf '%s\n' "$allowed" | grep -Eq -- '(^|,)Bash(,|$)'; then
     ok "$1"
   else
-    red "$1 (pauschales 'Bash' unerwartet in $2)"
+    red "$1 (pauschales 'Bash' in --allowedTools '$allowed' aus $2)"
+  fi
+}
+
+# #1218: the stub writes one argument per line, so an option's value is the
+# line right after it.
+arg_after() {   # $1 = Datei, $2 = Option -> Wert auf stdout
+  awk -v opt="$2" 'found { print; exit } $0 == opt { found = 1 }' "$1" 2>/dev/null
+}
+
+assert_arg_after() {   # $1 = Beschreibung, $2 = Datei, $3 = Option, $4 = erwarteter Wert
+  local got
+  got=$(arg_after "$2" "$3")
+  if [ "$got" = "$4" ]; then
+    ok "$1"
+  else
+    red "$1 (hinter $3 steht '$got', erwartet '$4')"
+  fi
+}
+
+# #1218: the supervisor finds running agents by the prefix
+# 'claude -p --output-format json' -- new flags must not push into it.
+assert_supervisor_prefix() {   # $1 = Beschreibung, $2 = Datei
+  if [ "$(head -3 "$2" 2>/dev/null | paste -sd ' ' -)" = "-p --output-format json" ]; then
+    ok "$1"
+  else
+    red "$1 (Argumente beginnen mit '$(head -3 "$2" 2>/dev/null | paste -sd ' ' -)')"
   fi
 }
 
@@ -251,6 +283,11 @@ assert_contains "AC1/#325 (O3): Planer bekommt --disallowedTools" "$GHSTATE_DIR/
 assert_arg_line "AC1/#325+ADR-0025: harte Verweigerung ist genau Edit" "$GHSTATE_DIR/claude-lastargs" "Edit"
 assert_contains "AC1/ADR-0025: Planer bekommt Write (Artifact braucht eine Datei)" "$GHSTATE_DIR/claude-lastargs" "Artifact,Write"
 assert_contains "AC1/#767 (ADR-0024): Planer bekommt Artifact" "$GHSTATE_DIR/claude-lastargs" "Artifact"
+assert_arg_after "AC1/#1218: planner gets its tool set via --tools" "$GHSTATE_DIR/claude-lastargs" "--tools" "Read,Grep,Glob,Bash,Artifact,Write,Agent"
+assert_arg_line "AC1/#1218: planner runs with --strict-mcp-config" "$GHSTATE_DIR/claude-lastargs" "--strict-mcp-config"
+assert_arg_after "AC1/#1218: planner allowlist unchanged" "$GHSTATE_DIR/claude-lastargs" "--allowedTools" "Read,Grep,Glob,Bash(gh:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Artifact,Write"
+assert_arg_after "AC1/#1218: planner deny list unchanged" "$GHSTATE_DIR/claude-lastargs" "--disallowedTools" "Edit"
+assert_supervisor_prefix "AC1/#1218: planner arguments still start with -p --output-format json" "$GHSTATE_DIR/claude-lastargs"
 
 # ==============================================================================
 # 2. research wird gewählt, wenn kein plan ansteht -- Opus,
@@ -281,6 +318,11 @@ assert_contains "AC2/#325 (O3): Rechercheur bekommt --disallowedTools" "$GHSTATE
 assert_arg_line "AC2/#325+ADR-0025: harte Verweigerung ist genau Edit" "$GHSTATE_DIR/claude-lastargs" "Edit"
 assert_contains "AC2/ADR-0025: Rechercheur bekommt Write (Artifact braucht eine Datei)" "$GHSTATE_DIR/claude-lastargs" "Artifact,Write"
 assert_contains "AC2/#767 (ADR-0024): Rechercheur bekommt Artifact" "$GHSTATE_DIR/claude-lastargs" "Artifact"
+assert_arg_after "AC2/#1218: researcher gets its tool set via --tools" "$GHSTATE_DIR/claude-lastargs" "--tools" "Read,Grep,Glob,Bash,WebSearch,Artifact,Write,Agent"
+assert_arg_line "AC2/#1218: researcher runs with --strict-mcp-config" "$GHSTATE_DIR/claude-lastargs" "--strict-mcp-config"
+assert_arg_after "AC2/#1218: researcher allowlist unchanged" "$GHSTATE_DIR/claude-lastargs" "--allowedTools" "Read,Grep,Glob,Bash(gh:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),WebSearch,Artifact,Write"
+assert_arg_after "AC2/#1218: researcher deny list unchanged" "$GHSTATE_DIR/claude-lastargs" "--disallowedTools" "Edit"
+assert_supervisor_prefix "AC2/#1218: researcher arguments still start with -p --output-format json" "$GHSTATE_DIR/claude-lastargs"
 
 # ==============================================================================
 # 3. Kill-Switch hands-off überspringt das research-Ticket komplett --
@@ -299,6 +341,10 @@ assert_contains "AC3: #48 bekommt in-progress" "$GHSTATE_DIR/applied-48" "ADD:in
 assert_contains "AC3/#63: RUN_ROLE=build behält vollen Bash-Zugriff (unverändert)" "$GHSTATE_DIR/claude-lastargs" "Edit,Write,Glob,Grep,Bash"
 assert_not_contains "AC3/#325 (O3): Bau-Rolle bekommt KEIN --disallowedTools" "$GHSTATE_DIR/claude-lastargs" "--disallowedTools"
 assert_not_contains "AC3/#767 (ADR-0024): Bau-Rolle bekommt KEIN Artifact" "$GHSTATE_DIR/claude-lastargs" "Artifact"
+assert_arg_after "AC3/#1218: build run gets its tool set via --tools" "$GHSTATE_DIR/claude-lastargs" "--tools" "Read,Edit,Write,Glob,Grep,Bash,Agent,Skill"
+assert_arg_line "AC3/#1218: build run has --strict-mcp-config" "$GHSTATE_DIR/claude-lastargs" "--strict-mcp-config"
+assert_arg_after "AC3/#1218: build allowlist unchanged" "$GHSTATE_DIR/claude-lastargs" "--allowedTools" "Read,Edit,Write,Glob,Grep,Bash"
+assert_supervisor_prefix "AC3/#1218: build arguments still start with -p --output-format json" "$GHSTATE_DIR/claude-lastargs"
 
 # ==============================================================================
 # 4. Inkonsistentes Ticket (research UND ready gleichzeitig) wird über
