@@ -114,10 +114,38 @@ Fortschrittskommentar liegt, kostet ein frischer Start nichts an Kontinuität.
 Die Denk-Rollen (`plan`, `research`) resumen unverändert weiter — dort ist
 die breite Lektüre in der Session der bewusste Auftrag.
 
-### 6. MCP-Server sparsam einsetzen
+### 6. Nur die Werkzeuge im Request, die die Rolle braucht
 
-Die Tool-Definitionen jedes MCP-Servers liegen bei **jedem** Turn im Kontext.
-Wir benutzen deshalb die `gh`-CLI über Bash statt eines GitHub-MCP-Servers.
+Jede Werkzeug-Definition liegt bei **jeder** Anfrage im Kontext. `--allowedTools`
+erteilt nur Freigaben; welche Definitionen im Request stehen, bestimmt `--tools`.
+Der Runner gibt deshalb jeder Rolle `--tools` mit (#1218): die Werkzeugnamen
+ihrer Allowlist plus `Agent`, beim Bauen zusätzlich `Skill` für `e2e-fallen`
+(`deriveToolSet()` in `scripts/runner/prompts.ts`). `--tools` begrenzt auch die
+Subagenten — was ein Agent unter `.claude/agents/` braucht, muss in jedem Satz
+stehen.
+
+Fester Präfix laut `claude -p "/context"` (CLI 2.1.202, 18.10.26, aus einem
+Worktree wie in Slot 1):
+
+| Rolle | Modell | vorher | mit `--tools` |
+| --- | --- | --- | --- |
+| Bau, CI-Fix | Sonnet | 49,4k | 37,2k |
+| AK-Check | Sonnet | 48,8k | 35,4k |
+| Planer | Opus | 37,1k | 25,7k |
+| Rechercheur | Opus | 37,1k | 26,3k |
+
+`--disallowedTools` ist kein Ersatz: beim Start entfernt es nur die genannten
+Werkzeuge (`"Edit,Write"`: −0,9k), `--tools` alles Übrige. Nebenbei sieht ein Lauf
+keine Werkzeuge mehr, die er nicht benutzen darf — AK-Check-Läufe versuchten
+vorher 1–3× `Write`, jedes Mal abgelehnt, jedes Mal mit dem ganzen Bericht als
+Output.
+
+MCP-Server kommen aus demselben Grund nicht in die Läufe; GitHub läuft über die
+`gh`-CLI. Der claude.ai-Connector lädt auch in `claude -p`, kommt aber erst
+mitten im Lauf an und schreibt dann den ganzen Cache neu — ohne `ToolSearch`
+zusätzlich mit seinen Definitionen vorab (+2,4k je Anfrage). Mit
+`--strict-mcp-config` liest die zweite Anfrage 30.470 Tokens aus dem Cache und
+schreibt 97; der Runner startet deshalb jeden Lauf damit.
 
 ### 7. Keine Bilder in den Hauptkontext
 

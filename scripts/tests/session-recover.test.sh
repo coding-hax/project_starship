@@ -212,6 +212,23 @@ else
   red "AC2: der Frischversuch haette ohne --resume laufen muessen"
 fi
 
+# #1218: the fresh retry reuses base_args, so it must carry the same --tools
+# set and --strict-mcp-config as the first attempt. One argument per line --
+# the value of --tools is the line after it.
+tools_1=$(awk 'found { print; exit } $0 == "--tools" { found = 1 }' "$GHSTATE_DIR/claude-args-1" 2>/dev/null)
+tools_2=$(awk 'found { print; exit } $0 == "--tools" { found = 1 }' "$GHSTATE_DIR/claude-args-2" 2>/dev/null)
+if [ -n "$tools_1" ] && [ "$tools_2" = "$tools_1" ]; then
+  ok "#1218: the fresh retry keeps the first attempt's --tools set ($tools_2)"
+else
+  red "#1218: --tools differs between first attempt ('$tools_1') and fresh retry ('$tools_2')"
+fi
+if grep -qx -- '--strict-mcp-config' "$GHSTATE_DIR/claude-args-1" 2>/dev/null \
+  && grep -qx -- '--strict-mcp-config' "$GHSTATE_DIR/claude-args-2" 2>/dev/null; then
+  ok "#1218: first attempt and fresh retry both run with --strict-mcp-config"
+else
+  red "#1218: --strict-mcp-config is missing from the first attempt or the fresh retry"
+fi
+
 assert_eq "AC3: session-think-70 traegt danach die NEUE Session-ID, nicht die Gift-ID" \
   "frische-session-nach-recovery" "$(cat "$STATE_DIR/session-think-70" 2>/dev/null)"
 
