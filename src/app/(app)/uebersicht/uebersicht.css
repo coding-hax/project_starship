@@ -30,7 +30,7 @@
    * (faces.css `pf-bob`, ±3px per `translate`) — ohne Reserve zählt Chromium
    * die verschobene Malfläche zur `scrollHeight` des Elternelements, sobald sie
    * über die unanimierte 42px-Höhe hinausragt. Bei `--font-scale: 1.25` reicht
-   * die vorherige Toleranz nicht mehr aus (CI-Fund AC9, capture-uebersicht.spec.ts:
+   * die vorherige Toleranz nicht mehr aus (issue #920 CI-Fund:
    * `.page-head` scrollHeight 90 vs. clientHeight 89) — dasselbe Muster wie
    * `.einstellungen__title-cluster` (Endabgleich #870). */
   padding-block: var(--space-1);
@@ -59,8 +59,7 @@
  * `flex: 1` (statt `0 1 auto`) auf diesem h1 selbst, aus demselben Grund wie
  * oben an `.title-cluster`: sonst bemisst sich die h1-Box nach ihrem Text, und
  * das PageFace-Icon direkt danach (#830) rutscht beim Font-Swap horizontal mit
- * (CI-Fund: `svg [122,24 32×32 → 126,24 32×32]`, AC1 aus
- * uebersicht-ladezustand.spec.ts). Mit `flex: 1` füllt die h1-Box immer den
+ * (issue #920 CI-Fund: `svg [122,24 32×32 → 126,24 32×32]`). Mit `flex: 1` füllt die h1-Box immer den
  * kompletten Rest des Clusters, unabhängig von den Glyphenmaßen — das Icon
  * bleibt an fester Position.
  *
@@ -69,8 +68,8 @@
  * trägt, reicht ein Schutz vor Brüchen MITTEN im Wort nicht mehr — „Guten
  * Mittag"/„Guten Morgen" haben ein Leerzeichen, also einen ganz regulären
  * Umbruchpunkt, und der 42px-Slot (siehe faces.css: „nie höher als die eigene
- * Zeile") wuchs auf zwei Zeilen (CI-Fund: `div.uebersicht__title-cluster
- * [16,19 163×42 → 16,16 163×53]`, derselbe AC1-Test). `nowrap` verbietet jeden
+ * Zeile") wuchs auf zwei Zeilen (derselbe issue #920 CI-Fund: `div.uebersicht__title-cluster
+ * [16,19 163×42 → 16,16 163×53]`). `nowrap` verbietet jeden
  * Umbruch, `overflow: hidden` + `text-overflow: ellipsis` fangen den Fall auf,
  * dass eine Begrüßung selbst einzeilig nicht in die verbliebene Breite passt —
  * lieber „Guten Mit…" als ein zweites, höheres Zeilenpaar. */
@@ -204,7 +203,7 @@ html:has([data-ground='uebersicht']) .page-head__extra {
 /* Seit issue #920 ist der Erfassungsknopf ein `position: fixed`-Fab statt eines
  * Titelzeilen-Knopfes (siehe uebersicht-capture.tsx) — die letzte Sektion
  * (Routinen) braucht deshalb Abstand zu ihm, sonst überdeckt der Fab bei hohem
- * `--font-scale` deren letzte Zeile (CI-Fund AC9, capture-uebersicht.spec.ts).
+ * `--font-scale` deren letzte Zeile (issue #920 CI-Fund).
  * Reserviert wird nur, was der Fab tatsächlich über `.shell__main`s eigenes
  * Bodenpolster (space-6 + safe-area, shell.css) hinaus überdeckt — nicht sein
  * ganzer Abstand zum Viewport-Boden. `.nav` ist seit #831/#889 eine Grid-Zeile,
@@ -227,8 +226,8 @@ html:has([data-ground='uebersicht']) .page-head__extra {
 /* Vier bis fünf Mini-Sektionen stapeln sich hier auf einer Seite — enger als
  * die Standard-Sektionslücke `--space-6`/`--space-3`, die für einzelne,
  * eigenständige Seiten bemessen ist. Ohne die Straffung reicht bei
- * `--font-scale: 1.25` der Platz vor dem Fab nicht mehr (CI-Fund AC9,
- * capture-uebersicht.spec.ts: die letzte Routinen-Zeile ragt unskaliert in
+ * `--font-scale: 1.25` der Platz vor dem Fab nicht mehr (issue #920 CI-Fund:
+ * die letzte Routinen-Zeile ragt unskaliert in
  * dessen Bodenstreifen — `padding-bottom` oben hilft dagegen nicht, das wirkt
  * erst *nach* der letzten Zeile, siehe Kommentar dort). `OverviewBlock` lebt
  * ausschließlich auf /uebersicht (überprüft: keine andere Route importiert

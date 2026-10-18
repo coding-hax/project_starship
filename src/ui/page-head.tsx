@@ -9,7 +9,7 @@ interface PageHeadProps {
   /** Zusatz-Slot unter der Titelzeile — Unterzeile ODER eine Chip-Reihe, nie beides. */
   extra?: ReactNode;
   /** Bisheriger Routen-Klassenname der Titelzeile (z. B. `uebersicht__title-row`) —
-      erhält die bestehenden Locator aus figuren.spec.ts/seitenkopf.spec.ts ohne Umbau. */
+      erhält bestehende Selektoren ohne Umbau. */
   rowClassName?: string;
   /** Durchreichte Routen-Attribute (globals.css `[data-ground]`/`[data-modules-off]`) — der
       äußere `.page-head` ist ihr Träger, wie zuvor die routeneigene Titelzeile. */
@@ -23,8 +23,8 @@ interface PageHeadProps {
  * liefern Titel/Cluster/Aktionen selbst, damit die Anti-Layout-Shift-Regeln
  * aus #652/#862 (weiterhin in der jeweiligen Routen-CSS) erhalten bleiben.
  *
- * `border-radius: 0`, kein Verlauf (page-head.css) — das hält
- * `seitenkopf.spec.ts` AK1 (`assertFlatHeader`) grün.
+ * `border-radius: 0`, kein Verlauf (page-head.css) — der Kopf bleibt flach
+ * (#868 AK1).
  */
 export function PageHead({
   eyebrow,

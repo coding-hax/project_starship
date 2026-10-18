@@ -146,8 +146,8 @@
      child a second time for one frame while the document is still growing. The
      copy then paints 36px (the offset) too high and corrects itself in the next
      frame: a layout shift with the row itself never moving, which
-     `uebersicht-ladezustand.spec.ts` AK1 measures and `.nav::before` never
-     showed because a pseudo-element is not a shift source. Both children in
+     `.nav::before` never showed because a pseudo-element is not a shift
+     source. Both children in
      `1 / 1` keeps the copy in flow, where the sticky offset reaches it exactly
      once, and the DOM order alone decides what paints on top (issue #1006). */
   display: grid;
@@ -498,7 +498,7 @@
   /* /uebersicht trägt ihren eigenen Einstellungs-Einstieg jetzt in der
      Kopfzeile (issue #1180, uebersicht.css) — der Leistenfuß-Eintrag bliebe
      sonst ein zweiter erreichbarer „Einstellungen"-Link auf derselben Route
-     (AK5). Andere Routen (AK6, shell.wide.spec.ts AK3) sind von `:has()` nicht
+     (AK5). Andere Routen (AK6) sind von `:has()` nicht
      betroffen, `html` trägt `[data-ground]` je nach aktiver Route. */
   html:has([data-ground='uebersicht']) .app-header--sidebar {
     display: none;

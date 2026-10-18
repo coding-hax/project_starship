@@ -102,7 +102,7 @@
  * mode): the literal recipe (L−0.06, C×1.05, same H) computed against
  * `--on-accent` (AK4's ink on these four routes) lands at 1.83:1–3.69:1 —
  * below AK8's replacement floor (`--on-ground` ≥4.5:1 over every arc
- * surface, `tests/hintergrundboegen.spec.ts`). No single uniform rescale of
+ * surface). No single uniform rescale of
  * the −0.06 delta fixes this for all four at once: einstellungen's own
  * *unmodified* area colour (`#46525e`, already dark, low chroma) only
  * reaches 2.35:1 against `--on-accent` even at ΔL=0, so the arc has to move
@@ -266,8 +266,7 @@ html:has([data-ground='anmelden']) {
  * Übersicht/Routinen/Anmelden into the 50% bucket alongside Aktivitäten.
  * AK5's own literal contrast floor — "`--on-ground-light` auf allen neun
  * Routen ≥5,1:1" — is about THIS ground-vs-ink pairing (`darkGround` vs
- * `--on-ground-light`), pinned in `tests/grundfarbe.spec.ts` ("AK4: im
- * Dunkelmodus…", tightened from the pre-#991 4.5:1 floor). Verified per
+ * `--on-ground-light`), tightened from the pre-#991 4.5:1 floor. Verified per
  * route at F=0.34 (see tokens.css), tightest case Aktivitäten ≈5,10:1 —
  * lowering F further than 0.34 would help here but starts eating into the
  * light-mode AK4 floor for the `--on-accent` routes, so F stays uniform
@@ -276,9 +275,8 @@ html:has([data-ground='anmelden']) {
  * Arc tones (AK5's OTHER rule, a separate pairing): positive lightness
  * deltas ×0.7, negative ×0.85 of the OKLCH recipe's own deltas, chroma
  * capped at the route's raw (pre-damp) chroma — pre-computed the same way
- * as the light triples above, and checked against the AK8 replacement test
- * (`--on-ground` ≥4.5:1 over every arc surface, dark variant, "Ersatz für
- * #904 AK4 dunkel" in `tests/hintergrundboegen.spec.ts` — a DIFFERENT,
+ * as the light triples above, and checked against the AK8 replacement floor
+ * (`--on-ground` ≥4.5:1 over every arc surface, dark variant — a DIFFERENT,
  * weaker floor than AK5's 5.1:1 ground floor above). Applied literally
  * (deltas anchored to the light-mode area colour), most triples landed as
  * low as 1.13:1: the recipe's positive deltas push arcs 1/3 toward white,
@@ -424,9 +422,8 @@ body {
      band that used to live here (issue #882) moved to a translucent overlay
      (`.bg-layer__veil`, issue #919) and then dropped entirely (issue #982) —
      the ground now runs through unbroken with nothing painted over it in
-     that strip. `--ground-notch` (globals.css above) stays defined and still
-     covers that band's own contrast measurement (tests/shell.mobile.spec.ts)
-     as the quick rollback path (see issue #982's "Rückweg"). */
+     that strip. `--ground-notch` (globals.css above) stays defined as the
+     quick rollback path (see issue #982's "Rückweg"). */
   background: var(--ground);
   /* Traps `.bg-layer`'s `z-index: -1` (background-arcs.css) inside body's
      OWN stacking context (issue #849). Without this, body has no position/
@@ -472,8 +469,8 @@ h1 {
   font-weight: var(--weight-emphasis);
   letter-spacing: -0.025em;
   line-height: var(--leading-display);
-  /* Rundschrift-Metrik gegen den Kopf-Überlauf (seitenkopf.spec.ts, „läuft nicht
-     über"): Nunito (CI/Linux-Fallback) hat eine größere Inhaltsfläche als Inter
+  /* Rundschrift-Metrik gegen den Kopf-Überlauf: Nunito (CI/Linux-Fallback) hat
+     eine größere Inhaltsfläche als Inter
      (~30px bei 22px) und sprengt bei line-height 1.1 die Zeilenbox (24.2px) nach
      OBEN wie UNTEN um je ~2.9px. Nach unten läuft schon die h1-Box über sich selbst
      (scrollHeight > clientHeight, gemessen 3px auf /aufgaben, /anmelden); die obere

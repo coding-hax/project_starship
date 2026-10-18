@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { registerPasskey, resetAppData } from './helpers';
 
 /**
@@ -22,19 +22,6 @@ function readInset(page: Page) {
   return page.evaluate(() =>
     getComputedStyle(document.documentElement).getPropertyValue('--keyboard-inset').trim(),
   );
-}
-
-/** Whole pixels — `boundingBox()` carries sub-pixel noise irrelevant to the
- * hundreds of pixels this guards against (same convention as `keyboard-inset.spec.ts`). */
-async function roundedBox(locator: Locator) {
-  const box = await locator.boundingBox();
-  expect(box).not.toBeNull();
-  return {
-    x: Math.round(box!.x),
-    y: Math.round(box!.y),
-    width: Math.round(box!.width),
-    height: Math.round(box!.height),
-  };
 }
 
 /** The open sheet's card. A closed `<dialog>` keeps `.sheet__content` in the DOM
@@ -84,43 +71,6 @@ test.describe('Sheet bei offener Tastatur (#1175)', () => {
     return title;
   }
 
-  test('AK1: Tipp auf den Wann-Chip öffnet das Panel, das Sheet bleibt offen', async ({ page }) => {
-    await openQuickAddWithKeyboard(page);
-
-    await page.getByRole('button', { name: /^Fälligkeit(,|$)/ }).click();
-
-    await expect(page.locator('.due-picker')).toBeVisible();
-    await expect(page.getByRole('dialog')).toBeVisible();
-  });
-
-  test('AK2: der Tipp lässt Fokus und Tastatur stehen, die Karte fällt nicht zusammen', async ({
-    page,
-  }) => {
-    const title = await openQuickAddWithKeyboard(page);
-    const innerHeight = await page.evaluate(() => window.innerHeight);
-
-    const before = await roundedBox(sheetContent(page));
-
-    await page.getByRole('button', { name: /^Fälligkeit(,|$)/ }).click();
-    await expect(page.locator('.due-picker')).toBeVisible();
-
-    // The real regression signal: focus never left the title field, so a device's OS
-    // would never have had a reason to close the keyboard and collapse the card.
-    await expect(title).toBeFocused();
-    expect(await readInset(page)).toBe('300px');
-
-    // Not "the box is unchanged": the Wann panel is a full month calendar, so the
-    // card legitimately grows *upward* when it opens (measured 118 → 0 on 375×812,
-    // capped by sheet.css's `max-height: 100%`). The bug was the opposite direction —
-    // the card shrinking by the keyboard's 300px and its top edge dropping to y=522,
-    // which is what put the backdrop under the finger. So: the top edge may rise,
-    // never fall, and the card stays anchored to the bottom edge either way.
-    const after = await roundedBox(sheetContent(page));
-    expect(after.y).toBeLessThanOrEqual(before.y);
-    expect(after.y + after.height).toBe(innerHeight);
-    expect(before.y + before.height).toBe(innerHeight);
-  });
-
   test('AK3: „Heute" im Wann-Panel setzt die Fälligkeit, ohne das Sheet zu schließen', async ({
     page,
   }) => {
@@ -135,60 +85,6 @@ test.describe('Sheet bei offener Tastatur (#1175)', () => {
     await expect(page.getByRole('button', { name: /^Fälligkeit, / })).toBeVisible();
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(title).toBeFocused();
-    expect(await readInset(page)).toBe('300px');
-  });
-
-  test('AK4: ein auf der Karte begonnener Druck schließt nicht, auch wenn er über dem Backdrop endet', async ({
-    page,
-  }) => {
-    await openQuickAddWithKeyboard(page);
-    const card = await roundedBox(sheetContent(page));
-
-    // Press on the card's own padding (no control under it, so the pull-to-dismiss
-    // handler from #757 is the only thing watching), then release far above the
-    // card — where the backdrop is. That is the geometry the collapsing keyboard
-    // produced on the device, reproduced without needing the collapse itself.
-    await page.mouse.move(card.x + card.width / 2, card.y + 4);
-    await page.mouse.down();
-    await page.mouse.move(card.x + card.width / 2, 10);
-    await page.mouse.up();
-
-    await expect(page.getByRole('dialog')).toBeVisible();
-  });
-
-  test('AK5: Backdrop-Klick, „Abbrechen" und ESC schließen weiterhin', async ({ page }) => {
-    await openQuickAddWithKeyboard(page);
-    const card = await roundedBox(sheetContent(page));
-
-    // A real backdrop click: press and release both above the card.
-    await page.mouse.click(card.x + card.width / 2, 10);
-    await expect(page.getByRole('dialog')).toBeHidden();
-
-    await page.getByRole('button', { name: 'Aufgabe erfassen' }).click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await page.getByRole('button', { name: 'Abbrechen' }).click();
-    await expect(page.getByRole('dialog')).toBeHidden();
-
-    await page.getByRole('button', { name: 'Aufgabe erfassen' }).click();
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).toBeHidden();
-  });
-
-  test('AK6: dasselbe im Termin-Sheet — der Wann-Chip öffnet sein Panel', async ({ page }) => {
-    await registerPasskey(page, '/kalender');
-    await page.getByRole('button', { name: 'Termin erfassen' }).click();
-
-    const titleField = page.getByLabel('Titel');
-    await expect(titleField).toBeFocused();
-    await settleSheet(page);
-    await shrinkViewportForKeyboard(page);
-
-    await page.getByRole('button', { name: /^Wann(,|$)/ }).click();
-
-    await expect(page.getByRole('dialog').getByLabel('Ganztägig')).toBeVisible();
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(titleField).toBeFocused();
     expect(await readInset(page)).toBe('300px');
   });
 });

@@ -152,7 +152,7 @@ export function E2EBridge() {
         // Simulates entries an old, pre-#1145 build already queued — no `seq`, only
         // `createdAt` order — deterministically. A real `indexedDB.open('starship', N)`
         // against an older schema version is documented as flaky in this suite
-        // (journal.spec.ts #338 AC3: Dexie's `versionchange` handler races under
+        // (#338: Dexie's `versionchange` handler races under
         // `workers: 1`) and was rejected for the same reason here; `bulkAdd` bypasses
         // `mutate()` entirely, writing straight into the store the way an already-open
         // older build's outbox would look right before the v8 upgrade runs.
@@ -191,7 +191,7 @@ export function E2EBridge() {
         },
         // Removes a row through Dexie's own already-open connection (issue #650
         // Fund, modules.spec.ts AC7) — raw `indexedDB.deleteDatabase`/`.open` races
-        // Dexie's versionchange handler instead (see journal.spec.ts AC3), so specs
+        // Dexie's versionchange handler instead (see #338), so specs
         // that need a genuinely empty local slate go through the app's own db.
         debugDeleteRecord: (table: string, id: string) => db.records.delete([table, id] as never),
         // Drives the real lock-store state machine (issue #339) rather than a

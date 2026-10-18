@@ -144,7 +144,7 @@ Aktivitäten dunkel 5,1:1).
 Die Bogen-Formel selbst hält nicht auf jeder Route: `--arc-2` (Hellmodus) weicht
 auf vier Routen (Aufgaben/Kalender/Wetter/Einstellungen) von der Formel ab, die
 meisten Dunkelmodus-Tripel ebenso — dort würde die wörtliche Rechnung den
-Bogen-gegen-Tinte-Kontrast (≥4,5:1, `tests/hintergrundboegen.spec.ts`) auf bis zu
+Bogen-gegen-Tinte-Kontrast (≥4,5:1) auf bis zu
 1,13:1 reißen. Ein einzelner, für alle Routen gültiger Korrekturfaktor löst das
 nicht (Einstellungens eigene, unveränderte Bereichsfarbe hält selbst bei
 Delta null nur 2,35:1 gegen `--on-accent`) — deshalb bleiben Farbton und Chroma

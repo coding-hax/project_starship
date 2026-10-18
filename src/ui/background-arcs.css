@@ -58,20 +58,16 @@ html:has([data-ground]) .bg-layer {
  * the ground, the same vignette and the same three `.bg-arc` children from the
  * same rules — so there is nothing left to keep in sync.
  *
- * Deliberately NOT a `.bg-layer` modifier: `hintergrundboegen.spec.ts` reads
- * the background through `.bg-layer`/`.bg-layer .bg-arc` at fifteen places and
- * asserts "exactly three arcs" on each route. A second element carrying that
- * class would turn every one of those counts into six and every
- * `page.locator('.bg-layer')` into a strict-mode violation — the copy would
- * silently change what those tests measure. Its own class keeps them reading
- * the ambient layer, while the part that must never drift (arc geometry,
- * tones, gait) stays shared through `.bg-arc`.
+ * Deliberately NOT a `.bg-layer` modifier: `.bg-layer` stays the one ambient
+ * background per route, so anything reading `.bg-layer .bg-arc` still finds
+ * exactly three arcs. The part that must never drift (arc geometry, tones,
+ * gait) stays shared through `.bg-arc`.
  *
  * In flow, not absolutely positioned: `.nav` is `position: sticky`, and while
  * the document is still growing Chromium applies that sticky offset a second
  * time to an absolutely positioned child for a single frame — the copy painted
  * 36px too high and snapped back in the next frame, a measurable layout shift
- * (`uebersicht-ladezustand.spec.ts` AK1) with the row itself never moving. As
+ * with the row itself never moving. As
  * one of two items in `.nav`'s single grid cell (shell.css) the offset reaches
  * it exactly once. `position: relative` only so the arcs have a containing
  * block; they are placed from `bottom` and `left: 50%` alone (`left: 50%` of
@@ -87,9 +83,8 @@ html:has([data-ground]) .bg-layer {
   /* Fills the row instead of centring like the pill next to it. */
   align-self: stretch;
   /* The grid area is `.nav`'s content box, so an in-flow box stops short of the
-     home-indicator strip below the pill — `.nav`'s bottom padding, which two
-     tests pin to `.nav` itself (`shell.spec.ts` #123, `nav-order.mobile.spec.ts`)
-     and which scrolled cards pass through just the same. The negative margin
+     home-indicator strip below the pill — `.nav`'s bottom padding (#123),
+     which scrolled cards pass through just the same. The negative margin
      reaches the copy back over it, so it covers the full padding box the way
      `inset: 0` did. */
   margin-bottom: calc(-1 * (var(--space-2) + env(safe-area-inset-bottom)));
