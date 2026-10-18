@@ -83,15 +83,10 @@ Kein Milestone-Feld: das Repo führt keine GitHub-Milestones. Wo ein Ticket in
 der Roadmap steht, sagt `docs/VISION.md` — und nur die.
 
 Die Akzeptanzkriterien sind kein Prosa-Wunsch, sondern die **Spezifikation der Playwright-Tests** —
-das gilt für Kriterien, die unter eine der fünf K-Regeln aus #1210 fallen
-(K1 Datenintegrität, K2 Sicherheit & Privatsphäre, K3 Kernablauf, K4
-Browser-Mechanik, K5 stille Regression; Vollfassung in #1210,
-`docs/adr/0032-e2e-pflicht-nach-k-regeln.md`). Ein Kriterium, das stattdessen
-unter D1–D7 fällt (Optik, Varianten, Feinschliff — siehe #1210), bekommt
-**keinen** E2E-Test; der Autor kennzeichnet es dafür mit dem Klammer-Zusatz
-`(prüft der Mensch am Gerät)` am Ende der Kriteriumszeile, zum Beispiel:
-„Given … Then zeigt der Button denselben Abstand wie die übrigen
-(prüft der Mensch am Gerät)." Was nicht als Kriterium dasteht, wird nicht gebaut.
+für Kriterien unter K1–K5 (ADR-0032/#1210). Ein D1–D7-Kriterium (Optik,
+Varianten, Feinschliff) bekommt keinen E2E-Test; der Autor markiert es dafür
+am Zeilenende mit `(prüft der Mensch am Gerät)`. Was nicht als Kriterium
+dasteht, wird nicht gebaut.
 
 ## Branch & Commit
 
@@ -157,11 +152,10 @@ Check würde nur Fehlalarme produzieren.
   **keine** Desktop-Akzeptanzkriterien mehr: sie würden nirgends ausgeführt und sähen
   trotzdem nach Abdeckung aus. Desktop-only-Layout (Sidebar, Nav-Reihenfolge) ist
   damit ungeprüft — das ist der bewusst bezahlte Preis, siehe #564.
-- **Offline-Tests sind Pflicht für einen neuen Schreibweg** (neue
-  synchronisierte Tabelle oder neue Mutation) — `context.setOffline(true)`,
-  Mutation, wieder online, Assertion gegen den Serverzustand. Eine weitere
-  Offline-Rundreise für einen schon abgedeckten Schreibweg fällt unter D5
-  (#1210) und wird nicht ergänzt.
+- **Offline-Tests sind Pflicht nur für einen neuen Schreibweg** (neue Tabelle
+  oder Mutation) — `context.setOffline(true)`, Mutation, wieder online,
+  Assertion gegen den Serverzustand. Eine weitere Rundreise für einen schon
+  abgedeckten Schreibweg fällt unter D5 (#1210).
 
 ### Wie ein Flake-Fix belegt wird
 
