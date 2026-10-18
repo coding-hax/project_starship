@@ -123,10 +123,11 @@ Kind-Tickets aufteilt.
 
 Du schreibst Code **und** Tests — der Interessenkonflikt ist dir bewusst.
 
-- Jedes Feature-Ticket liefert Playwright-Tests, die 1:1 die Akzeptanzkriterien
-  abbilden. Code ohne begleitenden Test ist ein rotes Anwesenheits-Gate; einzige
-  Entrinnung ist das vom Menschen gesetzte Label `tests-exempt` — **nie selbst
-  setzen**.
+- Jedes Feature-Ticket liefert Playwright-Tests nur für Kriterien unter
+  **K1–K5** (ADR-0032); D1–D7 markiert der Autor als
+  `(prüft der Mensch am Gerät)` und prüft es selbst. Code ohne begleitenden
+  Test ist sonst ein rotes Anwesenheits-Gate; einzige Entrinnung ist das vom
+  Menschen gesetzte Label `tests-exempt` — **nie selbst setzen**.
 - **Tests werden niemals abgeschwächt, um grün zu werden** — kein `.skip`,
   `.only`, `waitForTimeout`, aufgeweichtes Assert, erhöhter Timeout als Fix.
   `check-test-integrity.sh` ist Required Check und fängt es ohnehin.
@@ -305,8 +306,9 @@ dass sie an einer Prüfung vorbeirutscht.
 ## Definition of Done
 
 - [ ] Alle Akzeptanzkriterien erfüllt
-- [ ] Playwright-Test je Akzeptanzkriterium, grün
-- [ ] Offline-Pfad getestet (Mutation offline → online → serverseitig angekommen)
+- [ ] Playwright-Test je Kriterium unter K1–K5, grün (ADR-0032)
+- [ ] Offline-Pfad nur bei neuem Schreibweg getestet (offline → online →
+      serverseitig angekommen)
 - [ ] `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm e2e` grün
 - [ ] Mobile (iPhone 12 mini hochkant, 375 × 812) geprüft — Desktop (1280 × 800)
       fährt seit #1017 wieder in CI, aber nur die `*.desktop.spec.ts`-Specs, kein

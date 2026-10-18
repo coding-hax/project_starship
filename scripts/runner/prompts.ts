@@ -365,7 +365,11 @@ ${PLAN_REUSE_AND_COMMITMENT_RULE}
    statt neu zu beginnen.
 3. Erstelle/ergänze in **einem** Kommentar
    einen **dateiweisen** Umsetzungsplan: pro Datei was sich ändert, Testplan,
-   Risiko/Rückweg, Wiederaufnahmepunkte. Statuszeile oben: „🧠 Plan (Opus) —
+   Risiko/Rückweg, Wiederaufnahmepunkte. Der Testplan sieht je
+   Akzeptanzkriterium entweder einen E2E-Test vor — **nur** für Kriterien unter K1–K5
+   (ADR-0032, Kurzfassung aus #1210) — oder vermerkt es als
+   \`(prüft der Mensch am Gerät)\`; für Kriterien unter D1–D7 plant der
+   Testplan **keinen** E2E-Test. Statuszeile oben: „🧠 Plan (Opus) —
    Status: **in Arbeit**" + Marker „← HIER WEITER BEIM PLANEN: <Abschnitt>".
 ${ownCommentRule(issue, '🧠 Plan (Opus) — Status:')}
 4. Brauchst du eine **menschliche Entscheidung** (nicht nur einen Plan):
@@ -479,13 +483,20 @@ ${list}
 3. Urteile **je Kriterium** und belege jedes Urteil:
    - **erfüllt** — im Diff (oder im vorhandenen Code) belegt UND ein Test hält
      es fest. Beleg: \`<pfad>:<zeile>\` und der Testname. Trägt das Ticket das
-     Label \`tests-exempt\`, entfällt der Testteil.
+     Label \`tests-exempt\`, entfällt der Testteil. Ebenso entfällt der
+     Testteil für ein einzelnes Kriterium, das mit
+     \`(prüft der Mensch am Gerät)\` gekennzeichnet ist (K-/D-Regeln aus
+     ADR-0032) — Code-Beleg genügt.
    - **nicht erfüllt** — fehlt, oder der Code sagt etwas anderes als das
      Kriterium. Beleg: die Stelle, an der es fehlt oder abweicht.
-   - **nicht prüfbar** — weder aus Diff noch aus Tests entscheidbar (z. B. rein
-     visuelle Zusagen ohne Messung). Sag in einem Satz, **was** fehlt, um es
-     prüfbar zu machen. Fürs Tor zählt das wie „nicht erfüllt" — aber der
-     Bau-Lauf weiß dann, dass ein Beleg fehlt, nicht Code.
+   - **nicht prüfbar** — weder aus Diff noch aus Tests entscheidbar. Ein mit
+     \`(prüft der Mensch am Gerät)\` markiertes optisches Kriterium ist
+     **nicht** automatisch nicht prüfbar — mit Code-Beleg ist es erfüllt; nur
+     ein **un**markiertes, rein visuelles Kriterium ohne jeden Beleg bleibt
+     nicht prüfbar (und ist ein Hinweis, dass das Ticket falsch geschnitten
+     ist). Sag in einem Satz, **was** fehlt, um es prüfbar zu machen. Fürs Tor
+     zählt das wie „nicht erfüllt" — aber der Bau-Lauf weiß dann, dass ein
+     Beleg fehlt, nicht Code.
    Rate nie. Ein unsicheres „wird schon" ist \`nicht prüfbar\`, nicht \`erfüllt\`.
    Prüfe jedes Kriterium im **vollen Wortlaut** — jede Teilbedingung einer
    „A **oder** B"-Formulierung einzeln. Die Spalte \`Kriterium (gekürzt)\` aus
