@@ -618,8 +618,8 @@ describe('eigener Kommentar per ID statt --edit-last (#1213)', () => {
   });
 
   it.each([
-    ['plan', planPrompt(7), '🧠 Plan (Opus) — Status:'],
-    ['research', researchPrompt(7), '🔎 Recherche — Status:'],
+    ['plan', planPrompt(7)],
+    ['research', researchPrompt(7)],
   ] as const)('%s legt den ersten Kommentar per Datei an', (_name, prompt) => {
     expect(prompt).toContain('`Write`');
     expect(prompt).toContain('Arbeitsverzeichnis');
