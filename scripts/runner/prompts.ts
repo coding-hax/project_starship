@@ -323,6 +323,25 @@ kleinste, der die Richtung belegt, ohne eine dieser Festlegungen zu
 verbauen. Nenn ausdrücklich, was drin ist und was bewusst vertagt wird —
 „was ist drin" und „was ist ausdrücklich vertagt".`;
 
+// #1213: `--edit-last` bearbeitet "the last comment of the current user" --
+// und jeder Lauf kommentiert unter demselben Konto, unter dem der Mensch
+// antwortet. Nach einer Antwort ist das also SEINE, und der Plan ersetzte sie
+// lautlos. Die Denk-Rollen haben `Write` und `Bash(gh:*)` (round.ts), sie
+// ersetzen ihren eigenen Kommentar deshalb ueber dessen ID. Grosses `-F`:
+// mit `-f body=@datei` postet gh den Pfad als Text.
+function ownCommentRule(issue: number, marker: string): string {
+  return `   So schreibst du ihn — **nie** mit '--edit-last': das trifft den neuesten
+   Kommentar des Kontos, und nach einer Antwort ist das die des Menschen.
+   - Erster Kommentar: den Text mit \`Write\` in eine Datei im
+     Arbeitsverzeichnis schreiben, dann \`gh issue comment ${issue} --body-file <pfad>\`.
+   - Fortsetzung: die ID deines Kommentars über den Marker „${marker}"
+     holen (bei mehreren die letzte):
+     \`gh api --paginate repos/{owner}/{repo}/issues/${issue}/comments --jq '.[] | select(.body | contains("${marker}")) | .id'\`
+     Dann den vollständigen neuen Text mit \`Write\` in die Datei und
+     \`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@<pfad>\`.
+     Großes \`-F\` — mit \`-f\` landet der Pfad als Text im Kommentar.`;
+}
+
 /**
  * RUN_ROLE=plan (ADR-0005). Nur lesend: kein Edit/Write, kein Branch, kein
  * Commit. Schreibt den Plan inkrementell in EINEN Kommentar und flippt
@@ -344,10 +363,11 @@ ${PLAN_REUSE_AND_COMMITMENT_RULE}
 2. Existiert bereits ein Plan-Kommentar mit „🧠 Plan (Opus) — Status: in
    Arbeit": **setze ihn fort** ab dem Marker „← HIER WEITER BEIM PLANEN",
    statt neu zu beginnen.
-3. Erstelle/ergänze in **einem** Kommentar (gh issue comment --edit-last)
+3. Erstelle/ergänze in **einem** Kommentar
    einen **dateiweisen** Umsetzungsplan: pro Datei was sich ändert, Testplan,
    Risiko/Rückweg, Wiederaufnahmepunkte. Statuszeile oben: „🧠 Plan (Opus) —
    Status: **in Arbeit**" + Marker „← HIER WEITER BEIM PLANEN: <Abschnitt>".
+${ownCommentRule(issue, '🧠 Plan (Opus) — Status:')}
 4. Brauchst du eine **menschliche Entscheidung** (nicht nur einen Plan):
    Statuszeile auf „Status: **wartet auf Entscheidung**", Label
    'needs-answer' setzen, beenden. Rate nie.
@@ -400,13 +420,14 @@ ${ARTIFACT_RULE}
 3. Existiert bereits ein Rechercheergebnis-Kommentar mit „🔎 Recherche — Status:
    in Arbeit": **setze ihn fort** ab dem Marker „← HIER WEITER BEI DER
    RECHERCHE", statt neu zu beginnen.
-4. Erstelle/ergänze in **einem** Kommentar (gh issue comment --edit-last) eine
+4. Erstelle/ergänze in **einem** Kommentar eine
    **Überlegung** auf Idee-/Feature-Ebene: Was ist es? Passt es zur Vision
    (auch: passt es *nicht* — das klar benennen, nicht eigenmächtig verwerfen)?
    2–3 Ansätze mit Trade-offs, Empfehlung, grober Scope. **Kein Code, keine
    dateiweise Umsetzung** — das ist der spätere Planer-Lauf (plan).
    Statuszeile oben: „🔎 Recherche — Status: **in Arbeit**" + Marker „← HIER
    WEITER BEI DER RECHERCHE: <Abschnitt>".
+${ownCommentRule(issue, '🔎 Recherche — Status:')}
 5. Ist die Überlegung **vollständig** (auch wenn das Ergebnis ein Widerspruch
    zur Vision ist): Statuszeile „Status: **fertig**", Marker entfernen, dann
    gh issue edit ${issue} --remove-label research --remove-label in-progress

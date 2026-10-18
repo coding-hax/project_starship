@@ -120,7 +120,10 @@ Architektur-Entscheidungen mehr treffen müssen. Erst danach: `plan` runter,
 **Automatik im Runner:** Ein `plan`-Ticket (ohne `needs-answer`, ohne
 `hands-off`) wird vom Runner selbst mit Opus geplant — streng nur-lesend
 (`--allowedTools "Read,Grep,Glob,Bash"`, kein Branch, kein Commit). Der Plan
-entsteht inkrementell in **einem** Kommentar (`--edit-last`); erst der
+entsteht inkrementell in **einem** Kommentar: der erste per
+`gh issue comment --body-file`, jede Fortsetzung ersetzt ihn über seine ID
+(`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@<datei>`) —
+nie per `--edit-last`, das träfe nach einer Antwort die des Menschen. Erst der
 abschließende Lauf entfernt `plan` und setzt `ready`. Bricht ein
 Planer-Lauf ab (Limit, Timeout), bleiben Label, Teilplan und
 Wiederaufnahme-Marker stehen — der nächste Lauf setzt dort fort, nie von vorne.
