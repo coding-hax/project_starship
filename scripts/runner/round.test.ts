@@ -2,7 +2,7 @@
 // Stelle, an der alle Einzelbausteine zusammenlaufen -- hier wird geprueft,
 // welchen Weg ein Takt nimmt und was am Ende im Status steht, nicht mehr, ob
 // eine einzelne Hilfsfunktion rechnet (das tun deren eigene Suiten).
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -318,6 +318,15 @@ describe('roundPlan', () => {
       expect(result.kind).toBe('run');
       expect((result as RoundRun).role).toBe('build');
       expect((result as RoundRun).prompt).toContain('Was rot ist');
+    });
+
+    // #1218: a CI fix is a build run and gets the build tool set, Skill
+    // included -- e2e-fallen is meant for reading a red e2e run.
+    it('gives the CI-fix run the build tool set (#1218)', () => {
+      const { gh } = ghDouble(prRoutes(70, ['in-progress', 'check'], redChecks));
+      const result = roundPlan(ctx(gh, gitDouble(lsRemote)), opts) as RoundRun;
+      expect(result.prompt).toContain('Was rot ist');
+      expect(result.toolSet).toBe('Read,Edit,Write,Glob,Grep,Bash,Agent,Skill');
     });
 
     // #961 AC3: der Opus-Tagesdeckel gilt dem BAUEN. Ist 'check' hier nur
@@ -692,6 +701,66 @@ describe('roundPlan', () => {
       const run = roundPlan(ctx(gh, git), opts) as RoundRun;
       expect(run.denyTools).toBe('');
       expect(run.beforeDirty).toBe('');
+    });
+  });
+
+  // #1218: --tools decides which tool definitions a run gets at all; the
+  // allowlist only grants permissions. --tools caps subagents too.
+  describe('toolSet (#1218)', () => {
+    const lsRemote = { 'ls-remote': 'abc123\trefs/heads/feat/70-quick-add\n' };
+    const planFor: Record<string, () => RoundRun> = {
+      build: () =>
+        roundPlan(ctx(ghDouble([openIssues(issueJson(77, ['ready'])), noOpenPrs, labelsAre('ready')]).gh), opts) as RoundRun,
+      plan: () => roundPlan(ctx(ghDouble([openIssues(issueJson(80, ['plan'])), noOpenPrs]).gh), opts) as RoundRun,
+      research: () => roundPlan(ctx(ghDouble([openIssues(issueJson(81, ['research'])), noOpenPrs]).gh), opts) as RoundRun,
+      check: () =>
+        roundPlan(
+          ctx(
+            ghDouble([openIssues(issueJson(70, ['in-progress', 'check'])), noOpenPrs, labelsAre('in-progress', 'check')]).gh,
+            gitDouble(lsRemote),
+          ),
+          opts,
+        ) as RoundRun,
+    };
+    const ROLES = ['build', 'plan', 'research', 'check'];
+
+    it.each([
+      ['build', 'Read,Edit,Write,Glob,Grep,Bash,Agent,Skill'],
+      ['plan', 'Read,Grep,Glob,Bash,Artifact,Write,Agent'],
+      ['research', 'Read,Grep,Glob,Bash,WebSearch,Artifact,Write,Agent'],
+      ['check', 'Read,Grep,Glob,Bash,Agent'],
+    ])('gives the %s role exactly its tool set', (role, expected) => {
+      const run = planFor[role]();
+      expect(run.role).toBe(role);
+      expect(run.toolSet).toBe(expected);
+    });
+
+    // Drift guard: a tool granted in the allowlist but missing from --tools
+    // would be permitted and still unavailable -- a silent failure.
+    it.each(ROLES)('leaves no tool of the %s allowlist out of the tool set', (role) => {
+      const run = planFor[role]();
+      const granted = run.tools.split(',').map((rule) => rule.split('(')[0].trim());
+      expect(granted.length).toBeGreaterThan(0);
+      for (const name of granted) expect(run.toolSet.split(','), `${role}: ${name}`).toContain(name);
+    });
+
+    // In a trial run under `--tools` without Grep and Glob, Explore was left
+    // with Read alone. Every tool an agent names must be in every role's set.
+    const agentDir = join(__dirname, '..', '..', '.claude', 'agents');
+    const agentTools = readdirSync(agentDir)
+      .filter((file) => file.endsWith('.md'))
+      .flatMap((file): [string, string[]][] => {
+        const frontmatter = readFileSync(join(agentDir, file), 'utf-8').split('---')[1] ?? '';
+        const line = frontmatter.split('\n').find((l) => l.startsWith('tools:'));
+        return line ? [[file, line.slice('tools:'.length).split(',').map((tool) => tool.trim())]] : [];
+      });
+
+    it.each(ROLES)('keeps every subagent tool in the %s tool set', (role) => {
+      const run = planFor[role]();
+      expect(agentTools.length).toBeGreaterThan(0);
+      for (const [agent, tools] of agentTools) {
+        for (const tool of tools) expect(run.toolSet.split(','), `${agent}: ${tool}`).toContain(tool);
+      }
     });
   });
 
@@ -1433,6 +1502,7 @@ describe('roundEval', () => {
     prompt: '',
     beforeDirty: '',
     denyTools: '',
+    toolSet: '',
   };
 
   // roundEval liest/schreibt weder 'claims' noch 'slotId' -- Platzhalter reicht.

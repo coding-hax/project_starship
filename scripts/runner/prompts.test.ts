@@ -3,6 +3,8 @@
 // aus den Bash-Heredocs (#203, S6) wortgleich uebernommen wurden -- gepruefte
 // Gleichheit gegen die alten Heredocs zum Portzeitpunkt, danach hier
 // festgenagelt.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   BUILD_TOOLS,
@@ -11,6 +13,7 @@ import {
   buildPrompt,
   checkPrompt,
   ciFixPrompt,
+  deriveToolSet,
   planPrompt,
   researchPrompt,
 } from './prompts.js';
@@ -454,6 +457,32 @@ describe('prompts', () => {
     });
   });
 
+  // #1218: --tools takes tool names, the allowlists hold permission rules.
+  describe('deriveToolSet (#1218)', () => {
+    it('strips permission patterns and keeps each tool name once', () => {
+      expect(deriveToolSet(READONLY_TOOLS, [])).toBe('Read,Grep,Glob,Bash');
+      expect(deriveToolSet(CHECK_TOOLS, [])).toBe('Read,Grep,Glob,Bash');
+    });
+
+    it('appends the extra tools after the allowlist names', () => {
+      expect(deriveToolSet(BUILD_TOOLS, ['Agent', 'Skill'])).toBe('Read,Edit,Write,Glob,Grep,Bash,Agent,Skill');
+    });
+
+    it('does not repeat an extra tool the allowlist already names', () => {
+      expect(deriveToolSet('Read,Agent', ['Agent'])).toBe('Read,Agent');
+    });
+
+    it('keeps a comma inside a permission pattern out of the names', () => {
+      expect(deriveToolSet('Bash(git log:*,x),Read', [])).toBe('Bash,Read');
+    });
+
+    // An empty name would turn into `--tools ",Read"` -- never emit one.
+    it('never yields an empty or padded name', () => {
+      expect(deriveToolSet('', ['Agent'])).toBe('Agent');
+      expect(deriveToolSet('Read, Grep,', [])).toBe('Read,Grep');
+    });
+  });
+
   // #767 (ADR-0024): beide Denk-Rollen bekommen dieselbe Artifact-Leitplanke
   // im Prompt -- Wann/Wie/keine Nutzerdaten/URL-im-Kommentar (AK2/3/5/6/7).
   describe('Artifact-Leitplanke fuer Denk-Rollen (#767, ADR-0024)', () => {
@@ -593,5 +622,61 @@ describe('prompts', () => {
       expect(prompt).toContain("'sleep'");
       expect(prompt).toContain('ich warte auf einen Subagenten');
     });
+  });
+});
+
+// #1213: `--edit-last` bearbeitet den neuesten Kommentar des angemeldeten
+// Kontos -- nach einer Antwort des Menschen ist das SEINE. Die Denk-Rollen
+// ersetzen ihren Kommentar deshalb ueber dessen ID.
+describe('eigener Kommentar per ID statt --edit-last (#1213)', () => {
+  const PROMPTS = [
+    ['build', buildPrompt(7)],
+    ['ci-fix', ciFixPrompt(7, 'egal')],
+    ['plan', planPrompt(7)],
+    ['research', researchPrompt(7)],
+    ['check', checkPrompt(7, ['eins'], 'fix/7-x')],
+  ] as const;
+
+  // Das Verbot selbst nennt das Flag -- nur dieser eine Satz darf es enthalten.
+  const PROHIBITION = "**nie** mit '--edit-last'";
+
+  it.each(PROMPTS)('%s weist nie --edit-last an', (_name, prompt) => {
+    expect(prompt.split(PROHIBITION).join('')).not.toContain('--edit-last');
+  });
+
+  it.each([
+    ['plan', planPrompt(7)],
+    ['research', researchPrompt(7)],
+  ] as const)('%s legt den ersten Kommentar per Datei an', (_name, prompt) => {
+    expect(prompt).toContain('`Write`');
+    expect(prompt).toContain('Arbeitsverzeichnis');
+    expect(prompt).toContain('`gh issue comment 7 --body-file <pfad>`');
+  });
+
+  it.each([
+    ['plan', planPrompt(7), '🧠 Plan (Opus) — Status:'],
+    ['research', researchPrompt(7), '🔎 Recherche — Status:'],
+  ] as const)('%s findet den eigenen Kommentar ueber den Marker und ersetzt ihn per ID', (_name, prompt, marker) => {
+    expect(prompt).toContain(`über den Marker „${marker}"`);
+    expect(prompt).toContain(
+      `gh api --paginate repos/{owner}/{repo}/issues/7/comments --jq '.[] | select(.body | contains("${marker}")) | .id'`,
+    );
+    expect(prompt).toContain('gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@<pfad>');
+    expect(prompt).toContain('Großes `-F`');
+  });
+
+  it.each([
+    ['plan', planPrompt(7)],
+    ['research', researchPrompt(7)],
+  ] as const)('%s nennt den Grund fuer das Verbot', (_name, prompt) => {
+    expect(prompt).toContain(PROHIBITION);
+    expect(prompt).toContain('das trifft den neuesten\n   Kommentar des Kontos, und nach einer Antwort ist das die des Menschen');
+  });
+
+  it('docs/workflow/zyklus.md beschreibt denselben Weg ohne --edit-last', () => {
+    const doc = readFileSync(join(__dirname, '..', '..', 'docs', 'workflow', 'zyklus.md'), 'utf-8');
+    expect(doc).toContain('gh issue comment --body-file');
+    expect(doc).toContain('gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@<datei>');
+    expect(doc.split('nie per `--edit-last`').join('')).not.toContain('--edit-last');
   });
 });

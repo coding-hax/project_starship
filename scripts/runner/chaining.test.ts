@@ -65,6 +65,7 @@ describe('Chaining-Entscheidung (#61)', () => {
     runStart: '',
     beforeDirty: '',
     denyTools: '',
+    toolSet: '',
     didWork: false,
     lastIssue: '',
     prompt: '',
