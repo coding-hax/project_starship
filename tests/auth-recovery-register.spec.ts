@@ -119,6 +119,22 @@ test.beforeEach(async ({ page }) => {
   await seedExistingCredential(page);
 });
 
+/**
+ * Every test here wipes the database and mints its own session, which
+ * `registerPasskey` writes into the shared AUTH_STATE — and #856 AK2 below
+ * signs that session out while the account stays. The next spec's
+ * `registerPasskey` cannot heal that state (the setup ceremony only exists on
+ * an empty database), so whichever test runs last here must not leave it
+ * behind. Hand over what `auth.setup.ts` would: a fresh account and a live
+ * shared session.
+ */
+test.afterEach(async ({ browser }) => {
+  await resetDatabase();
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  await registerPasskey(await context.newPage(), null);
+  await context.close();
+});
+
 test('AK2: nach erfolgreichem verify ist usedAt gesetzt, derselbe Code wird beim naechsten options mit 403 abgewiesen', async ({
   browser,
 }) => {
