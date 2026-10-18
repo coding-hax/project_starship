@@ -1,5 +1,6 @@
 # Code-Karte: Playwright-Specs (`tests/`)
 
+- `.claude/skills/e2e-fallen/SKILL.md` — bekannte Playwright-Fallen + Helfer, vor jedem Spec laden
 - `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock, parallele Läufe
 - `route-readiness.ts` — Warten auf kalte, authentifizierte Dev-Route vor Setup-Navigation
 - `shell.spec.ts` / `nav-order.spec.ts` / `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Login/Tabs/Header/Karussell; Seitengrund+Kopf

@@ -12,6 +12,7 @@
 - `check-tenant-isolation.sh` — Mandanten-PK, requireUser je Route
 - `check-{dexie-bump,codemap}.sh` — Dexie-Bump-Hinweis, Wächter für diese Karten
 - `git-hooks/pre-push` / `tests/*.test.sh` — Slot-Claim-Guard; Bash-Fixture-Suiten
+- `claude-hooks/post-edit-checks.sh` — PostToolUse-Hook: die check-*.sh schon beim Editieren
 - `starship-runner` — Shim, den launchd/systemd startet
 - `bootstrap-github.sh` / `vercel-build.sh` / `smoke-decide.sh` — Setup, Migration, Post-Deploy-Smoke
 - `{launchd,systemd}-setup.md` / `gen-slot-plists.sh` — Runner als Dienst je Slot
