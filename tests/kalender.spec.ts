@@ -551,6 +551,23 @@ test('ein ausgefallenes Vorkommen verschwindet nur an diesem Tag aus der Timelin
   // (nicht Ziehen — #784) zur naechsten Woche.
   await selectStripDay(page, 'Sa, 25.');
   await expect(eventCard(page, 'Yoga')).toBeVisible();
+});
+
+test('„nur dieser" schreibt die Ausnahme in event_exceptions, die online in Postgres ankommt', async ({
+  page,
+}) => {
+  await seedWeeklySeries(page);
+
+  await openEventEditor(page, eventCard(page, 'Yoga'));
+  const editDialog = page.getByRole('dialog', { name: EDIT_LABEL });
+  await expect(editDialog).toBeVisible();
+  await editDialog.getByRole('button', { name: 'Löschen' }).click();
+
+  const scopeDialog = page.getByRole('dialog', { name: 'Termin löschen — für welche Vorkommen?' });
+  await expect(scopeDialog).toBeVisible();
+  await scopeDialog.getByRole('button', { name: 'Nur dieser' }).click();
+
+  await expect(eventCard(page, 'Yoga')).toHaveCount(0);
 
   // "Nur dieser" schreibt in `event_exceptions`, nicht `events` — der einzige
   // Schreibweg in diese Tabelle. Beleg, dass die Ausnahme online ankommt.
