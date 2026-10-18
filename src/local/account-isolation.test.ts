@@ -149,6 +149,34 @@ describe('ensureAccountChecked', () => {
   });
 });
 
+describe('unauthenticated hook', () => {
+  it('runs every registered hook when the session turns out to be gone', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ authenticated: false })));
+    const { ensureAccountChecked, registerUnauthenticatedHook } = await import('./account-isolation');
+    const hook = vi.fn();
+    registerUnauthenticatedHook(hook);
+
+    await ensureAccountChecked();
+
+    expect(hook).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not run when the account merely switches to a different valid one', async () => {
+    getMetaMock.mockResolvedValue('a');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ authenticated: true, userId: 'b', blocked: false })),
+    );
+    const { ensureAccountChecked, registerUnauthenticatedHook } = await import('./account-isolation');
+    const hook = vi.fn();
+    registerUnauthenticatedHook(hook);
+
+    await ensureAccountChecked();
+
+    expect(hook).not.toHaveBeenCalled();
+  });
+});
+
 describe('markBlocked', () => {
   it('flips the blocked store and is observable without a fetch', async () => {
     const { markBlocked, isBlocked, subscribeBlocked, ensureAccountChecked } = await import(

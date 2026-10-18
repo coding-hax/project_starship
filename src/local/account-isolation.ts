@@ -61,6 +61,17 @@ export function registerWipeHook(fn: () => void): void {
   wipeHooks.add(fn);
 }
 
+const unauthenticatedHooks = new Set<() => void>();
+
+/** Lets `sync.ts` forward to its own `onUnauthorized` redirect — registered once
+ * at module load. Needed because `ensureAccountChecked()` now intercepts a stale
+ * cookie *before* `push()`/`pull()` ever reach `/api/sync/*`, so their own 401
+ * branches (which already call `onUnauthorized?.()`) never run; without this hook
+ * the device would wipe silently and never navigate to `/anmelden`. */
+export function registerUnauthenticatedHook(fn: () => void): void {
+  unauthenticatedHooks.add(fn);
+}
+
 /**
  * Clears every local store in one `rw` transaction over the already-open Dexie
  * connection — never `indexedDB.deleteDatabase()`/`db.delete()`, which races
@@ -101,6 +112,7 @@ async function check(): Promise<AccountCheckResult> {
 
   if (!status.authenticated) {
     await wipeLocalDatabase();
+    for (const hook of unauthenticatedHooks) hook();
     return 'unauthenticated';
   }
 

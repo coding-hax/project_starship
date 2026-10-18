@@ -1,5 +1,10 @@
 import { stashDisplacedJournalKey } from '@/features/journal/journal-key-stash';
-import { ensureAccountChecked, markBlocked, wipeLocalDatabase } from './account-isolation';
+import {
+  ensureAccountChecked,
+  markBlocked,
+  registerUnauthenticatedHook,
+  wipeLocalDatabase,
+} from './account-isolation';
 import { cursorAfterSkips } from './conflict';
 import { db, getMeta, META_LAST_PULLED_SEQ, setMeta } from './dexie';
 import { discardStale, markApplied, markFailed, pending } from './outbox';
@@ -29,6 +34,12 @@ let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(handler: (() => void) | null): void {
   onUnauthorized = handler;
 }
+
+// A stale cookie is now usually caught by `ensureAccountChecked()` itself (S2,
+// #1201) — before push()/pull() ever reach `/api/sync/*` — so their own 401
+// branches below never run. Registered once at module load, reading
+// `onUnauthorized` at call time so it still sees whatever sync-boot.tsx set.
+registerUnauthenticatedHook(() => onUnauthorized?.());
 
 // Without a bound, a request that neither resolves nor rejects (a stalled proxy, a
 // captive portal, a request caught mid-flight by a Playwright route that is removed

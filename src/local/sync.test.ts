@@ -40,11 +40,18 @@ vi.mock('./dexie', () => ({
 const ensureAccountCheckedMock = vi.fn();
 const markBlockedMock = vi.fn();
 const wipeLocalDatabaseMock = vi.fn();
+// sync.ts calls `registerUnauthenticatedHook()` at its own module-load time (not
+// inside a function body like the mocks above), which runs as soon as the static
+// `import ... from './sync'` below is evaluated — before this file's own `const`
+// statements would otherwise run. `vi.hoisted` is the one way to guarantee this
+// particular mock exists before that happens, not just before `vi.mock` is reached.
+const registerUnauthenticatedHookMock = vi.hoisted(() => vi.fn());
 
 vi.mock('./account-isolation', () => ({
   ensureAccountChecked: () => ensureAccountCheckedMock(),
   markBlocked: () => markBlockedMock(),
   wipeLocalDatabase: () => wipeLocalDatabaseMock(),
+  registerUnauthenticatedHook: (fn: () => void) => registerUnauthenticatedHookMock(fn),
 }));
 
 import { cursorAfterSkips } from './conflict';
@@ -104,6 +111,25 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   setUnauthorizedHandler(null);
+});
+
+describe('unauthenticated hook registration (S2, #1201)', () => {
+  it('forwards to the unauthorized handler so a stale cookie caught by ensureAccountChecked itself still redirects', () => {
+    expect(registerUnauthenticatedHookMock).toHaveBeenCalledTimes(1);
+    const registeredHook = registerUnauthenticatedHookMock.mock.calls[0][0] as () => void;
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+
+    registeredHook();
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing when no handler is registered yet', () => {
+    const registeredHook = registerUnauthenticatedHookMock.mock.calls[0][0] as () => void;
+
+    expect(() => registeredHook()).not.toThrow();
+  });
 });
 
 describe('pull', () => {
