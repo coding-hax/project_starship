@@ -51,12 +51,15 @@ registerUnauthenticatedHook(() => onUnauthorized?.());
 const SYNC_FETCH_TIMEOUT_MS = 10_000;
 
 export async function sync(): Promise<void> {
-  // Gated before any coalescing (S2, #1201): a device whose local DB still
-  // belongs to another account must neither push its stale outbox nor pull
-  // under the wrong session. `ensureAccountChecked` is itself memoized, so a
-  // caller docking onto `inFlight` below never re-runs the check.
-  if ((await ensureAccountChecked()) !== 'ready') return;
-
+  // Checked and set before any `await` (#1201 Fund): two overlapping callers
+  // must never both see `inFlight` unset. It used to be — `ensureAccountChecked()`
+  // sat *before* this check, and awaiting it let a second caller's `sync()` reach
+  // this line before the first had a chance to set `inFlight`, so both started
+  // their own `push()`/`pull()` concurrently (observed as a double push in
+  // capture.spec.ts AC5, flaky because it depends on exactly how the two awaits
+  // interleave). The account check itself still runs before `push()`/`pull()` —
+  // just inside the critical section now, not ahead of the lock that guards it.
+  //
   // Coalesce overlapping triggers into the running sync, but never let coalescing
   // drop a caller's own work or serve it stale data. A call arriving mid-run sets
   // both flags and joins the in-flight promise. `queuedRerun` resets at the top of
@@ -76,6 +79,12 @@ export async function sync(): Promise<void> {
 
   inFlight = (async () => {
     try {
+      // Gated before any push/pull (S2, #1201): a device whose local DB still
+      // belongs to another account must neither push its stale outbox nor pull
+      // under the wrong session. `ensureAccountChecked` is itself memoized, so
+      // this never re-runs the underlying check once it has settled.
+      if ((await ensureAccountChecked()) !== 'ready') return;
+
       do {
         queuedRerun = false;
         await push();

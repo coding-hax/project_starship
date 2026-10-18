@@ -465,4 +465,39 @@ describe('sync', () => {
     expect(ensureAccountCheckedMock).toHaveBeenCalled();
     expect(setMetaMock).toHaveBeenCalledWith('lastPulledSeq', 0);
   });
+
+  it('sets inFlight synchronously, before the account check even starts — a second overlapping call never re-checks the account (regression: an await ahead of the inFlight check let two callers both start their own push, observed as a doubled push in capture.spec.ts AC5, #1201 Fund)', async () => {
+    pendingMock.mockResolvedValueOnce([outboxEntry({ id: 'm1' })]).mockResolvedValue([]);
+    // One shared, reusable promise — `pull()` (src/local/sync.ts:209) calls
+    // `ensureAccountChecked()` again within the same lap, same as the real
+    // memoized function would keep returning its own already-settled result.
+    // `mockImplementation` returning a *fresh* promise per call would instead
+    // wedge that second call forever once `resolveCheck` only ever fires once.
+    let resolveCheck: (value: string) => void = () => {};
+    const checkPromise = new Promise<string>((resolve) => {
+      resolveCheck = resolve;
+    });
+    ensureAccountCheckedMock.mockReturnValue(checkPromise);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.toString().includes('/push')
+            ? jsonResponse({ applied: ['m1'], conflicts: [], rejected: [] })
+            : jsonResponse(pullResponse()),
+        ),
+      ),
+    );
+
+    const first = sync();
+    const second = sync();
+
+    // Still unresolved at this point — if the second call reached its own
+    // `ensureAccountChecked()` instead of joining the first's `inFlight`, it would
+    // have called the mock again right here, before either promise settles.
+    expect(ensureAccountCheckedMock).toHaveBeenCalledTimes(1);
+
+    resolveCheck('ready');
+    await Promise.all([first, second]);
+  });
 });
