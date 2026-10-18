@@ -48,7 +48,7 @@ EOF
 # Stub-Wächter: schreibt seinen Namen ins Log des Repos, bleibt grün.
 make_stub_repo() {   # $1 = Verzeichnis
   local d="$1" g
-  mkdir -p "$d/scripts" "$d/tests" "$d/src/ui" "$d/docs"
+  mkdir -p "$d/scripts" "$d/tests" "$d/src/ui" "$d/src/features" "$d/docs"
   for g in $GUARDS; do
     printf '#!/usr/bin/env bash\necho %s >> "%s/guards.log"\nexit 1\n' "$g" "$d" > "$d/scripts/$g"
   done
