@@ -178,7 +178,79 @@ test('ein gestalteter Leerzustand statt einer leeren Fläche (issue #87 AC2)', a
   await page.goto('/uebersicht');
   await seedTask(page, { title: 'Außerhalb der Woche', dueAt: BEYOND_WEEK });
 
-  await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
+  await expect(page.getByText('Nichts fällig in den nächsten 7 Tagen.')).toBeVisible();
+});
+
+test('der Aufgaben-Leerzustand steht auf einer eigenen Fläche wie die Routinen-Karte, nicht mehr frei auf dem Seitengrund (issue #1217 AK1)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  // Genau eine Fläche, keine freistehende Nachricht mehr daneben.
+  const surface = page.locator('.task-list__surface');
+  await expect(surface).toHaveCount(1);
+  await expect(surface.getByText('Nichts fällig in den nächsten 7 Tagen.')).toBeVisible();
+
+  // Eigene Tinte wie `.habit-today` (Radius, Schatten) statt einer bloßen Notiz.
+  const habitCard = routinenHead(page);
+  const [surfaceStyle, habitStyle] = await Promise.all([
+    surface.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { radius: style.borderRadius, shadow: style.boxShadow };
+    }),
+    habitCard.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { radius: style.borderRadius, shadow: style.boxShadow };
+    }),
+  ]);
+  expect(surfaceStyle).toEqual(habitStyle);
+});
+
+test('der Aufgaben-Leerzustand zeigt den Kartenkopf „Aufgaben" mit dem Link „Alle" nach /aufgaben, und nur eine Überschrift (issue #1217 AK2)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  const heading = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
+  await expect(heading).toHaveCount(1);
+  await expect(heading).not.toHaveClass(/visually-hidden/);
+  await expect(heading).toHaveAttribute('id', 'uebersicht-aufgaben-heading');
+
+  const link = page.locator('.task-list__surface').getByRole('link', { name: 'Alle' });
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute('href', '/aufgaben');
+  await link.click();
+  await expect(page).toHaveURL(/\/aufgaben$/);
+});
+
+test('die „ohne Datum"-Zeile steht in derselben Fläche als letzter Abschnitt unter dem Leerzustand-Text (issue #1217 AK5)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Ohne Datum' });
+
+  const surface = page.locator('.task-list__surface');
+  await expect(surface).toHaveCount(1);
+  const emptyTextBox = await surface.getByText('Nichts fällig in den nächsten 7 Tagen.').boundingBox();
+  const undatedBox = await undatedCard(page).boundingBox();
+  if (!emptyTextBox || !undatedBox) throw new Error('Text und Ausklappzeile müssen sichtbar sein');
+  expect(undatedBox.y, 'die Ausklappzeile steht unter dem Leerzustand-Text').toBeGreaterThan(
+    emptyTextBox.y,
+  );
+});
+
+test('die Aufgaben-Leerzustandskarte ist auf dem Desktop so breit wie die Routinen-Karte (issue #1217 AK6)', async ({
+  page,
+}) => {
+  for (const width of [1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/uebersicht');
+
+    const surfaceBox = await page.locator('.task-list__surface').boundingBox();
+    const habitBox = await routinenHead(page).boundingBox();
+    if (!surfaceBox || !habitBox) throw new Error('Beide Karten müssen sichtbar sein');
+    expect(surfaceBox.width, `Breite bei ${width}px`).toBeCloseTo(habitBox.width, 0);
+  }
 });
 
 test('undatierte offene Aufgaben stehen nicht in der Woche-Liste, sondern in einer eingeklappten Karte darunter (issue #762)', async ({
@@ -219,14 +291,14 @@ test('die Karte für undatierte Aufgaben steht auch dann, wenn diese Woche sonst
   await page.goto('/uebersicht');
   await seedTask(page, { title: 'Ohne Datum' });
 
-  await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
+  await expect(page.getByText('Nichts fällig in den nächsten 7 Tagen.')).toBeVisible();
   const card = undatedCard(page);
   await expect(card).toHaveText('1 Aufgabe ohne Datum');
   // AK7 (issue #996): Leer-Notiz und Ausklappzeile teilen sich eine Fläche statt
   // je einer eigenen Karte — genau eine `.task-list__surface`, beide darin verschachtelt.
   const surface = page.locator('.task-list__surface');
   await expect(surface).toHaveCount(1);
-  await expect(surface.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
+  await expect(surface.getByText('Nichts fällig in den nächsten 7 Tagen.')).toBeVisible();
   await expect(surface.getByRole('button', { name: '1 Aufgabe ohne Datum' })).toBeVisible();
   await card.click();
   // exact: true — the card's own title text ("1 Aufgabe ohne Datum") is a substring match otherwise.
@@ -434,7 +506,7 @@ test('die Übersicht-Liste nutzt dieselbe TaskItem-Zeile wie /aufgaben — das H
   await expect(dueTaskItems(page).locator('.task-list__due')).not.toHaveClass(
     /task-list__due--overdue/,
   );
-  await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toHaveCount(0);
+  await expect(page.getByText('Nichts fällig in den nächsten 7 Tagen.')).toHaveCount(0);
 
   // The row stays reachable, so the same tap takes it back (issue #228 AC5).
   await checkbox.click();
@@ -465,7 +537,7 @@ test('am Folgetag ist die gestern abgehakte Aufgabe aus der Übersicht verschwun
   await page.reload();
 
   await expect(dueTaskItems(page)).toHaveCount(0);
-  await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
+  await expect(page.getByText('Nichts fällig in den nächsten 7 Tagen.')).toBeVisible();
 });
 
 test('ohne fällige Aufgabe rückt der Leerzustand nicht auseinander — der Abstand zwischen den Abschnitten bleibt wie mit einer Aufgabe (issue #228 AC6)', async ({
@@ -476,7 +548,7 @@ test('ohne fällige Aufgabe rückt der Leerzustand nicht auseinander — der Abs
     await page.goto('/uebersicht');
 
     const content = aufgabenContent(page);
-    await expect(page.getByText('Nichts fällig. Genieß den Tag.')).toBeVisible();
+    await expect(page.getByText('Nichts fällig in den nächsten 7 Tagen.')).toBeVisible();
     const emptyBox = await content.boundingBox();
     if (!emptyBox) throw new Error('Der Aufgaben-Leerzustand muss sichtbar sein');
 
@@ -520,10 +592,13 @@ test('kein "Routinen verwalten"-Link mehr auf /uebersicht — der Nav-Tab bleibt
   ).toBeVisible();
 });
 
-test('die Aufgaben-Überschrift bleibt im DOM für Screenreader, ist aber visuell verborgen (issue #157 AC5, jetzt #972 AK3)', async ({
+test('die Aufgaben-Überschrift bleibt im DOM für Screenreader, ist aber visuell verborgen, solange die Liste gefüllt ist (issue #157 AC5, #972 AK3, jetzt #1217 AK2)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
+  // Gefüllte Liste (issue #1217 AK2: nur dann bleibt die Überschrift verborgen —
+  // im Leerzustand wird sie zum sichtbaren Kartenkopf, siehe eigener Test).
+  await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
 
   const aufgabenHeading = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
   await expect(aufgabenHeading).toHaveCount(1);
