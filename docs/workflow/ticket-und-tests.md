@@ -61,6 +61,9 @@ Ich kann eine Aufgabe erfassen, ohne dafür die Ansicht zu wechseln.
       Then erscheint sie sofort in der Liste und die Outbox enthält einen Eintrag.
 - [ ] Given ich war offline und werde online, When der Sync läuft,
       Then existiert die Aufgabe serverseitig.
+- [ ] Given das Bottom-Sheet ist offen, When es erscheint,
+      Then hat es denselben Abstand zum Bildschirmrand wie andere Sheets
+      (prüft der Mensch am Gerät)
 
 ## Betroffene Dateien
 
@@ -79,8 +82,16 @@ Ich kann eine Aufgabe erfassen, ohne dafür die Ansicht zu wechseln.
 Kein Milestone-Feld: das Repo führt keine GitHub-Milestones. Wo ein Ticket in
 der Roadmap steht, sagt `docs/VISION.md` — und nur die.
 
-Die Akzeptanzkriterien sind kein Prosa-Wunsch, sondern die **Spezifikation der Playwright-Tests**.
-Was nicht als Kriterium dasteht, wird nicht gebaut.
+Die Akzeptanzkriterien sind kein Prosa-Wunsch, sondern die **Spezifikation der Playwright-Tests** —
+das gilt für Kriterien, die unter eine der fünf K-Regeln aus #1210 fallen
+(K1 Datenintegrität, K2 Sicherheit & Privatsphäre, K3 Kernablauf, K4
+Browser-Mechanik, K5 stille Regression; Vollfassung in #1210,
+`docs/adr/0032-e2e-pflicht-nach-k-regeln.md`). Ein Kriterium, das stattdessen
+unter D1–D7 fällt (Optik, Varianten, Feinschliff — siehe #1210), bekommt
+**keinen** E2E-Test; der Autor kennzeichnet es dafür mit dem Klammer-Zusatz
+`(prüft der Mensch am Gerät)` am Ende der Kriteriumszeile, zum Beispiel:
+„Given … Then zeigt der Button denselben Abstand wie die übrigen
+(prüft der Mensch am Gerät)." Was nicht als Kriterium dasteht, wird nicht gebaut.
 
 ## Branch & Commit
 
@@ -146,8 +157,11 @@ Check würde nur Fehlalarme produzieren.
   **keine** Desktop-Akzeptanzkriterien mehr: sie würden nirgends ausgeführt und sähen
   trotzdem nach Abdeckung aus. Desktop-only-Layout (Sidebar, Nav-Reihenfolge) ist
   damit ungeprüft — das ist der bewusst bezahlte Preis, siehe #564.
-- **Offline-Tests sind Pflicht** — `context.setOffline(true)`, Mutation, wieder online,
-  Assertion gegen den Serverzustand.
+- **Offline-Tests sind Pflicht für einen neuen Schreibweg** (neue
+  synchronisierte Tabelle oder neue Mutation) — `context.setOffline(true)`,
+  Mutation, wieder online, Assertion gegen den Serverzustand. Eine weitere
+  Offline-Rundreise für einen schon abgedeckten Schreibweg fällt unter D5
+  (#1210) und wird nicht ergänzt.
 
 ### Wie ein Flake-Fix belegt wird
 

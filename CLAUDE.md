@@ -124,7 +124,11 @@ Kind-Tickets aufteilt.
 Du schreibst Code **und** Tests — der Interessenkonflikt ist dir bewusst.
 
 - Jedes Feature-Ticket liefert Playwright-Tests, die 1:1 die Akzeptanzkriterien
-  abbilden. Code ohne begleitenden Test ist ein rotes Anwesenheits-Gate; einzige
+  abbilden — das gilt nur noch für Kriterien, die unter **K1–K5**
+  (`docs/adr/0032-e2e-pflicht-nach-k-regeln.md`) fallen. Rein optische
+  Kriterien (D1–D7) trägt der Mensch am Gerät; der Autor kennzeichnet sie am
+  Ende der Kriteriumszeile mit dem Zusatz `(prüft der Mensch am Gerät)`. Code
+  ohne begleitenden Test ist sonst ein rotes Anwesenheits-Gate; einzige
   Entrinnung ist das vom Menschen gesetzte Label `tests-exempt` — **nie selbst
   setzen**.
 - **Tests werden niemals abgeschwächt, um grün zu werden** — kein `.skip`,
@@ -305,8 +309,11 @@ dass sie an einer Prüfung vorbeirutscht.
 ## Definition of Done
 
 - [ ] Alle Akzeptanzkriterien erfüllt
-- [ ] Playwright-Test je Akzeptanzkriterium, grün
-- [ ] Offline-Pfad getestet (Mutation offline → online → serverseitig angekommen)
+- [ ] Playwright-Test je Kriterium unter K1–K5, grün; D1–D7 ist mit
+      `(prüft der Mensch am Gerät)` gekennzeichnet (ADR-0032)
+- [ ] Offline-Pfad getestet nur bei einem neuen Schreibweg (neue
+      synchronisierte Tabelle oder neue Mutation; Mutation offline → online →
+      serverseitig angekommen)
 - [ ] `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm e2e` grün
 - [ ] Mobile (iPhone 12 mini hochkant, 375 × 812) geprüft — Desktop (1280 × 800)
       fährt seit #1017 wieder in CI, aber nur die `*.desktop.spec.ts`-Specs, kein
