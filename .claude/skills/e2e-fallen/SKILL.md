@@ -86,7 +86,8 @@ läuft in genau einem Projekt.
     Notch-Zone braucht einen überschreibbaren Anker, sonst ist er grün ohne Aussage.
 17. React 19 flusht Klicks im Microtask: wer im selben `page.evaluate` direkt
     nach `click()` liest, sieht das alte DOM. Erst einen `requestAnimationFrame`
-    abwarten (Vorbild `tests/kalender.spec.ts: agendaAfterDaySwitch`).
+    abwarten (Vorbild `agendaAfterDaySwitch` in
+    `git show ca6d4a3:tests/kalender.spec.ts`).
 18. `page.addInitScript` läuft, bevor `document.head` existiert — ein
     `appendChild` dort verpufft. `addStyleTag` überlebt dafür kein `page.goto`.
 
@@ -94,7 +95,6 @@ läuft in genau einem Projekt.
 
 19. Erfassungs-Specs setzen ihren Text meist über Helfer, nicht über `fill()`:
     `tests/capture.spec.ts: submitQuickAdd`,
-    `tests/capture-art.spec.ts: submitCapture`,
     `tests/capture-uebersicht.spec.ts: submitUebersichtCapture`. Wer Eingaben
     gegen den Parser nachrechnet, greppt alle Wege.
 20. Layout-Specs schreiben Routenzahlen aus („alle neun Routen", `toBe(9)`).
