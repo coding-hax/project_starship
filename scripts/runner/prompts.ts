@@ -498,6 +498,14 @@ ${list}
      zählt das wie „nicht erfüllt" — aber der Bau-Lauf weiß dann, dass ein
      Beleg fehlt, nicht Code.
    Rate nie. Ein unsicheres „wird schon" ist \`nicht prüfbar\`, nicht \`erfüllt\`.
+   Prüfe jedes Kriterium im **vollen Wortlaut** — jede Teilbedingung einer
+   „A **oder** B"-Formulierung einzeln. Die Spalte \`Kriterium (gekürzt)\` aus
+   Schritt 4 ist **nur Anzeige**, nie die Suchgrundlage: wer nach der
+   gekürzten Fassung sucht, findet nur die Hälfte (#1222). Tritt ein Befund
+   als **Muster** auf (z. B. „Kommentar zitiert einen gestrichenen Test/eine
+   gelöschte Spec" an mehreren Stellen), ist er erst mit der **vollständigen**
+   Liste aller Stellen (\`<pfad>:<zeile>\`) vollständig — nicht mit dem ersten
+   Treffer.
 4. **Schreib deinen Befund in jedem Ausgang zuerst — auch bei voller Erfüllung.**
    In **einen** Kommentar am Ticket, überschrieben mit \`## ✅ AK-Check\`, und zwar
    **vor jeder Label-Änderung und vor dem Merge**. Der Kommentar ist die
@@ -541,12 +549,20 @@ grünen Required Checks. **Kein** \`gh pr checks --watch\`.
   Tickets, mit Nummer und dem, was konkret fehlt — der Bau-Lauf liest dort
   weiter, nicht in deinem Prüfbericht.
 
-**Zweiter Check mit demselben Ergebnis** — stand schon vor deinem Lauf ein
-\`## ✅ AK-Check\`-Kommentar mit offenen Kriterien am Ticket, dann ist das hier
-der zweite vergebliche Anlauf: setze zusätzlich \`gh issue edit ${issue}
---add-label needs-answer\` und beende. Zwei Runden am selben Kriterium heißen,
-dass das Kriterium unklar ist — das entscheidet der Mensch, nicht eine dritte
-Runde.`;
+**Zweiter Check mit demselben offenen Kriterium** — stand im **unmittelbar
+vorausgegangenen** \`## ✅ AK-Check\`-Kommentar ein Kriterium unter derselben
+Nummer bereits offen, und findest du es auch heute offen, dann ist das hier
+der zweite vergebliche Anlauf an genau diesem Kriterium:
+dasselbe Kriterium in zwei aufeinanderfolgenden Runden offen. Ein Kriterium,
+das heute **neu** offen ist (in der Vorrunde noch nicht als offen stand),
+löst das **nicht** aus — das ist Normalbetrieb, kein zweiter Anlauf. Schreib
+in diesem Fall **vor** dem Label einen Kommentar ans Ticket mit konkreten
+Optionen (A/B …), deiner Empfehlung und dem, was passiert, wenn niemand
+antwortet — wie CLAUDE.md „Wenn du nicht weiterkommst" es vorschreibt. Erst
+danach setze zusätzlich \`gh issue edit ${issue} --add-label needs-answer\`
+und beende.
+Zwei Runden am selben Kriterium heißen, dass das Kriterium unklar ist — das
+entscheidet der Mensch, nicht eine dritte Runde.`;
 }
 
 // Werkzeug-Allowlist der Denk-Rollen (ADR-0005 + #63): praeventiv statt nur
