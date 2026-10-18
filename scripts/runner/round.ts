@@ -42,6 +42,7 @@ import {
   buildPrompt,
   checkPrompt,
   ciFixPrompt,
+  deriveToolSet,
   planPrompt,
   researchPrompt,
 } from './prompts.js';
@@ -146,6 +147,8 @@ export interface RoundRun {
   branch: string;
   /** O3 (#325): --disallowedTools fuer den `claude`-Aufruf, '' beim Bauen. */
   denyTools: string;
+  /** #1218: --tools for the `claude` call, see deriveToolSet(). */
+  toolSet: string;
 }
 
 export type RoundPlanResult = RoundDone | RoundRun;
@@ -996,6 +999,11 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
           ? CHECK_TOOLS
           : BUILD_TOOLS;
 
+  // #1218: `Agent` runs Explore and test-runner for every role. `Skill` only
+  // for building (CI fixes included): e2e-fallen is loaded before writing a
+  // spec or reading a red e2e run.
+  const toolSet = deriveToolSet(tools, role === 'build' ? ['Agent', 'Skill'] : ['Agent']);
+
   // O2/O3 (#325): nur die Denk-Rollen laufen in einem Wegwerf-Worktree UND
   // bekommen die harte Werkzeug-Verweigerung -- die Bau-Rolle hat ihren
   // eigenen Worktree bereits (#242) und braucht Edit/Write.
@@ -1030,6 +1038,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
     beforeDirty,
     branch: checkBranch,
     denyTools,
+    toolSet,
   };
 }
 

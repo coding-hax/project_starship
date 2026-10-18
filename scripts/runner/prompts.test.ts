@@ -11,6 +11,7 @@ import {
   buildPrompt,
   checkPrompt,
   ciFixPrompt,
+  deriveToolSet,
   planPrompt,
   researchPrompt,
 } from './prompts.js';
@@ -451,6 +452,32 @@ describe('prompts', () => {
     // Bau-Rolle darf es nicht bekommen (AK4, Scope-Creep).
     it('nennt Artifact nicht in BUILD_TOOLS', () => {
       expect(BUILD_TOOLS.split(',')).not.toContain('Artifact');
+    });
+  });
+
+  // #1218: --tools takes tool names, the allowlists hold permission rules.
+  describe('deriveToolSet (#1218)', () => {
+    it('strips permission patterns and keeps each tool name once', () => {
+      expect(deriveToolSet(READONLY_TOOLS, [])).toBe('Read,Grep,Glob,Bash');
+      expect(deriveToolSet(CHECK_TOOLS, [])).toBe('Read,Grep,Glob,Bash');
+    });
+
+    it('appends the extra tools after the allowlist names', () => {
+      expect(deriveToolSet(BUILD_TOOLS, ['Agent', 'Skill'])).toBe('Read,Edit,Write,Glob,Grep,Bash,Agent,Skill');
+    });
+
+    it('does not repeat an extra tool the allowlist already names', () => {
+      expect(deriveToolSet('Read,Agent', ['Agent'])).toBe('Read,Agent');
+    });
+
+    it('keeps a comma inside a permission pattern out of the names', () => {
+      expect(deriveToolSet('Bash(git log:*,x),Read', [])).toBe('Bash,Read');
+    });
+
+    // An empty name would turn into `--tools ",Read"` -- never emit one.
+    it('never yields an empty or padded name', () => {
+      expect(deriveToolSet('', ['Agent'])).toBe('Agent');
+      expect(deriveToolSet('Read, Grep,', [])).toBe('Read,Grep');
     });
   });
 

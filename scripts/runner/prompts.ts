@@ -551,3 +551,15 @@ export const CHECK_TOOLS = `${READONLY_TOOLS},Bash(git fetch:*)`;
 // aber in 2.1.202 weder ueber --allowedTools noch ueber --disallowedTools noch
 // ueber --settings -- geprueft, alle drei Wege ignorieren den Pfadteil.
 export const READONLY_DENY = 'Edit';
+
+// #1218: the value for `--tools` -- which tool definitions a run gets at all.
+// The allowlists above only grant permissions; without `--tools` every run
+// carries the full default set (~20k tokens of definitions plus the skills
+// listing) on every request. Derived from the allowlist, so a newly granted
+// tool can never be missing from the run. `extra` names tools a role uses
+// that need no permission (`Agent`, `Skill`). `--tools` caps subagents too:
+// round.test.ts checks every agent under .claude/agents/ against the sets.
+export function deriveToolSet(allowlist: string, extra: readonly string[]): string {
+  const names = [...allowlist.matchAll(/([^,(]+)(?:\([^)]*\))?/g)].map((m) => m[1].trim());
+  return [...new Set([...names, ...extra])].filter((name) => name !== '').join(',');
+}
