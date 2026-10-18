@@ -135,26 +135,29 @@
 }
 
 /**
- * On /uebersicht the empty state sits between two section headings, where
- * space-12 tore a hole into the page — nothing due looked like a rendering bug
- * (issue #228). A filled "Woche" list is never just one row anymore, though: the
- * shortest possible one (a single overdue-or-today task, no undated section) is
- * one group's worth of the shared surface — its own top/bottom padding, a
- * header line, one task row (issue #762, sized this way since issue #866) — so
- * the empty state reserves all of that, not just the row — otherwise the very
- * case #228 fixed reopens the moment the last task of the week is checked off.
- * No border and no surface: this is a note, not a card. On the full /aufgaben
- * screen the empty state is *not* given room to breathe (issue #932): it sits
- * tight under the view switcher instead of floating in the middle of the
- * screen — see `.task-list__empty` above.
+ * On /uebersicht the empty state now sits on its own card, not a bare note —
+ * issue #1217 AK1 deliberately reopens #996 AK7's "a lone message never gets
+ * a surface" for this one call site, so Aufgaben reads as a card like Termine
+ * and Routinen even with nothing due. A filled "Woche" list is never just one
+ * row, though: the shortest possible one (a single overdue-or-today task, no
+ * undated section) is one group's worth of the shared surface — its own
+ * top/bottom padding, a header line, one task row (issue #762, sized this way
+ * since issue #866) — so the empty card reserves the same total height
+ * (issue #228 AC6, now AK4), just split across real elements instead of one
+ * element faking all of it: the surface's own `padding-block` plus the real
+ * `OverviewCardHead` above this paragraph (task-list.tsx) now stand in for
+ * the `--group-header-height`/`2 * --space-4` this min-height used to carry
+ * alone — only the one row's worth (`--task-card-height`) is still this
+ * element's own job. On the full /aufgaben screen the empty state is still
+ * *not* given room to breathe (issue #932): it sits tight under the view
+ * switcher instead of floating in the middle of the screen — see
+ * `.task-list__empty` above.
  */
 .task-list__empty--compact {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(
-    var(--task-card-height) + var(--group-header-height) + 2 * var(--space-4)
-  );
+  min-height: var(--task-card-height);
   padding: var(--space-3) var(--space-4);
 }
 

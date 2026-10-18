@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { mutate } from '@/local/outbox';
 import { OfflineNotice } from '@/ui/offline-notice';
+import { OverviewCardHead } from '@/ui/overview-block';
 import { useBlockReady } from '@/ui/overview-ready';
 import { SectionCard } from '@/ui/section-card';
 import { SegmentedControl, type SegmentedOption } from '@/ui/segmented-control';
@@ -200,12 +201,23 @@ export interface TaskListProps {
    * on: it never shows a switcher and never changes away from the default.
    */
   view?: ViewMode;
+  /**
+   * Id for the module heading (issue #1217 AK2) — only meaningful together with
+   * `dueTodayOnly`. `TasksOverviewSection` passes it through so the heading it
+   * used to render itself (via `OverviewBlock`'s `hiddenTitle`, unconditionally
+   * hidden) can instead move in here, where it varies: hidden while the list is
+   * loading or filled (same as before), but the *visible* title of the empty
+   * state's own card (`OverviewCardHead`, AK1) once there's nothing due — never
+   * both at once, so the block always has exactly one "Aufgaben" heading.
+   */
+  headingId?: string;
 }
 
 export function TaskList({
   dueTodayOnly = false,
   anchorOnMount = true,
   view = 'woche',
+  headingId,
 }: TaskListProps = {}) {
   const allTasks = useTasks();
   // Grouped from the full list (issue #89) — nesting structure, the /uebersicht
@@ -550,7 +562,7 @@ export function TaskList({
       ? null
       : dueTodayOnly
         ? presenceRows.length === 0
-          ? 'Nichts fällig. Genieß den Tag.'
+          ? 'Nichts fällig in den nächsten 7 Tagen.'
           : null
         : tasks.length === 0 && presenceRows.length === 0
           ? 'Nichts geplant'
@@ -561,10 +573,13 @@ export function TaskList({
               : null;
 
   // AK6/#762's "ohne Datum" toggle, now the shared surface's last section
-  // (issue #996 AK2) rather than a card of its own — `showUndated` decides
-  // whether the surface wrapper below is needed at all when the main list is
-  // replaced by `emptyMessage` (AK7: a lone message never gets a surface, the
-  // message *plus* this toggle always share one).
+  // (issue #996 AK2) rather than a card of its own — on /aufgaben (`view ===
+  // 'woche'`, never `dueTodayOnly`) `showUndated` decides whether the surface
+  // wrapper below is needed at all when the main list is replaced by
+  // `emptyMessage` (#996 AK7: a lone message never gets a surface there). On
+  // /uebersicht (`dueTodayOnly`), AK7 is reopened for this one call site
+  // (issue #1217 AK1): the surface always wraps the empty state there, with
+  // or without this toggle.
   const showUndated =
     tasks !== undefined && (dueTodayOnly || view === 'woche') && undatedNodes.length > 0;
   const undatedSection = showUndated && (
@@ -591,8 +606,27 @@ export function TaskList({
     </p>
   );
 
+  // The module heading (issue #1217 AK2) — moved in here from `OverviewBlock`'s
+  // `hiddenTitle` (unconditionally hidden before #1217) because it now varies
+  // with this component's own empty/filled state: hidden while loading or
+  // filled, same text and id as before, but the *visible* title of the empty
+  // card's own head (`cardHead` below, AK1) once nothing is due — never both,
+  // so the block always carries exactly one "Aufgaben" heading. Irrelevant
+  // off /uebersicht (`!dueTodayOnly`), where no `headingId` is ever passed.
+  const hiddenHeading =
+    dueTodayOnly && emptyMessage === null ? (
+      <h2 className="visually-hidden" id={headingId}>
+        Aufgaben
+      </h2>
+    ) : null;
+  const cardHead =
+    dueTodayOnly && emptyMessage !== null ? (
+      <OverviewCardHead title="Aufgaben" headingId={headingId} href="/aufgaben" moreLabel="Alle" />
+    ) : null;
+
   return (
     <>
+      {hiddenHeading}
       {!online && (
         <OfflineNotice>
           Offline — deine Aufgaben sind lokal gespeichert und werden synchronisiert, sobald du
@@ -601,8 +635,9 @@ export function TaskList({
       )}
 
       {tasks === undefined ? null : emptyMessage !== null ? (
-        showUndated ? (
+        dueTodayOnly ? (
           <div className="task-list__surface">
+            {cardHead}
             {emptyMessageEl}
             {undatedSection}
           </div>

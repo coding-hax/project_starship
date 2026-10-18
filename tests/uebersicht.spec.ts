@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   addIcsSubscription,
   freezeClock,
@@ -35,6 +35,17 @@ function dueTaskItems(page: Page) {
 /** A group's title (issue #866) — "Überfällig"/"Heute"/"7 Tage". */
 function groupTitles(page: Page) {
   return page.locator('.task-list__group-title');
+}
+
+function undatedCard(page: Page) {
+  return page.getByRole('button', { name: /Aufgabe(n)? ohne Datum/ });
+}
+
+/** Content anchor for the Routinen section (issue #972 AK2: the module keeps
+ * a visible title, in its own card head; issue #995 merged that head into the
+ * same card as the check-off list, so this now points at the whole card). */
+function routinenHead(page: Page): Locator {
+  return page.locator('.habit-today');
 }
 
 async function seedTask(page: Page, payload: Record<string, unknown>): Promise<string> {
@@ -117,6 +128,78 @@ test('/uebersicht zeigt die Woche-Ansicht — überfällig, heute und die 6 folg
   const titles = groupTitles(page);
   await expect(titles.first()).toHaveText('Überfällig');
   await expect(titles.last()).toHaveText('7 Tage');
+});
+
+test('der Aufgaben-Leerzustand steht auf einer eigenen Fläche wie die Routinen-Karte, nicht mehr frei auf dem Seitengrund (issue #1217 AK1)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  // Genau eine Fläche, keine freistehende Nachricht mehr daneben.
+  const surface = page.locator('.task-list__surface');
+  await expect(surface).toHaveCount(1);
+  await expect(surface.getByText('Nichts fällig in den nächsten 7 Tagen.')).toBeVisible();
+
+  // Eigene Tinte wie `.habit-today` (Radius, Schatten) statt einer bloßen Notiz.
+  const habitCard = routinenHead(page);
+  const [surfaceStyle, habitStyle] = await Promise.all([
+    surface.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { radius: style.borderRadius, shadow: style.boxShadow };
+    }),
+    habitCard.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { radius: style.borderRadius, shadow: style.boxShadow };
+    }),
+  ]);
+  expect(surfaceStyle).toEqual(habitStyle);
+});
+
+test('der Aufgaben-Leerzustand zeigt den Kartenkopf „Aufgaben" mit dem Link „Alle" nach /aufgaben, und nur eine Überschrift (issue #1217 AK2)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  const heading = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
+  await expect(heading).toHaveCount(1);
+  await expect(heading).not.toHaveClass(/visually-hidden/);
+  await expect(heading).toHaveAttribute('id', 'uebersicht-aufgaben-heading');
+
+  const link = page.locator('.task-list__surface').getByRole('link', { name: 'Alle' });
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute('href', '/aufgaben');
+  await link.click();
+  await expect(page).toHaveURL(/\/aufgaben$/);
+});
+
+test('die „ohne Datum"-Zeile steht in derselben Fläche als letzter Abschnitt unter dem Leerzustand-Text (issue #1217 AK5)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Ohne Datum' });
+
+  const surface = page.locator('.task-list__surface');
+  await expect(surface).toHaveCount(1);
+  const emptyTextBox = await surface.getByText('Nichts fällig in den nächsten 7 Tagen.').boundingBox();
+  const undatedBox = await undatedCard(page).boundingBox();
+  if (!emptyTextBox || !undatedBox) throw new Error('Text und Ausklappzeile müssen sichtbar sein');
+  expect(undatedBox.y, 'die Ausklappzeile steht unter dem Leerzustand-Text').toBeGreaterThan(
+    emptyTextBox.y,
+  );
+});
+
+test('die Aufgaben-Leerzustandskarte ist auf dem Desktop so breit wie die Routinen-Karte (issue #1217 AK6)', async ({
+  page,
+}) => {
+  for (const width of [1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/uebersicht');
+
+    const surfaceBox = await page.locator('.task-list__surface').boundingBox();
+    const habitBox = await routinenHead(page).boundingBox();
+    if (!surfaceBox || !habitBox) throw new Error('Beide Karten müssen sichtbar sein');
+    expect(surfaceBox.width, `Breite bei ${width}px`).toBeCloseTo(habitBox.width, 0);
+  }
 });
 
 /* -------------------------------------------------------------------------- */
