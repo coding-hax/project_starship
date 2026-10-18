@@ -41,6 +41,7 @@ Weitere liest du nur bei konkretem Anlass:
 | Zweifel, ob ein Ticket zum Produkt passt | `docs/VISION.md` |
 | Architektur- oder Grundsatzfrage | das passende ADR unter `docs/adr/` |
 | Details zu einem Bereich aus der Code-Karte | die passende Bereichskarte unter `docs/codemap/` |
+| Playwright-Spec schreiben, erweitern oder rotes e2e deuten | den Skill `e2e-fallen` (`.claude/skills/e2e-fallen/SKILL.md`) |
 
 ADRs sind getroffene Entscheidungen. Sie werden nicht neu verhandelt.
 

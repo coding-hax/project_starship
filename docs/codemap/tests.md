@@ -1,5 +1,6 @@
 # Code-Karte: Playwright-Specs (`tests/`)
 
+- `.claude/skills/e2e-fallen/SKILL.md` — bekannte Playwright-Fallen + Helfer, vor jedem Spec laden
 - `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock, parallele Läufe
 - `route-readiness.ts` — Warten auf kalte, authentifizierte Dev-Route vor Setup-Navigation
 - `helpers.ts` / `auth.setup.ts` — Test-Helfer; echte Passkey-Zeremonie einmal je Lauf

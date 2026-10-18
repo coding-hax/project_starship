@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"$CLAUDE_PROJECT_DIR/scripts/claude-hooks/post-edit-checks.sh\" ] || exit 0; bash \"$CLAUDE_PROJECT_DIR/scripts/claude-hooks/post-edit-checks.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
