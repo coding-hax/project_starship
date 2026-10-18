@@ -248,6 +248,18 @@ describe('prompts', () => {
       expect(CHECK_TOOLS).not.toContain('Edit');
       expect(CHECK_TOOLS).not.toContain('Artifact');
     });
+
+    // #1215/ADR-0032: ein mit "(prueft der Mensch am Geraet)" markiertes
+    // Kriterium ist mit Code-Beleg erfuellt, auch ohne Test.
+    it('wertet ein mit "(prüft der Mensch am Gerät)" markiertes Kriterium ohne Test als erfüllt', () => {
+      expect(prompt).toContain('(prüft der Mensch am Gerät)');
+      expect(prompt).toContain('Code-Beleg genügt');
+      expect(prompt).toContain('ADR-0032');
+    });
+
+    it('bleibt bei einem unmarkierten, rein visuellen Kriterium ohne Beleg bei nicht prüfbar', () => {
+      expect(prompt).toContain('ein **un**markiertes, rein visuelles Kriterium ohne jeden Beleg bleibt');
+    });
   });
 
   // #901: der Pruefer hinterlaesst IMMER eine sichtbare Anmerkung -- auch wenn
@@ -410,6 +422,16 @@ describe('prompts', () => {
     it('haelt die Planer-Rolle bei dateiweisen Plaenen, die Recherche darueber', () => {
       expect(planPrompt(7)).toContain('**dateiweisen** Umsetzungsplan');
       expect(researchPrompt(7)).toContain('**Kein Code, keine\n   dateiweise Umsetzung**');
+    });
+
+    // #1215/ADR-0032: der Testplan nimmt nur fuer K1-K5-Kriterien einen
+    // E2E-Test auf, D1-D7 markiert er als "(prueft der Mensch am Geraet)".
+    it('plant E2E-Tests nur fuer K1-K5-Kriterien, D1-D7 markiert er als "prüft der Mensch am Gerät"', () => {
+      const prompt = planPrompt(7);
+      expect(prompt).toContain('**nur** für Kriterien unter K1–K5');
+      expect(prompt).toContain('(prüft der Mensch am Gerät)');
+      expect(prompt).toContain('für Kriterien unter D1–D7 plant der\n   Testplan **keinen** E2E-Test');
+      expect(prompt).toContain('ADR-0032');
     });
 
     // #326: #216 legte am 28.07.26 seine drei Bau-Tickets doppelt an -- der
