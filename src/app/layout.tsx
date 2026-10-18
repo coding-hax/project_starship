@@ -45,8 +45,7 @@ const nunito = Nunito({
 // (issue #867 CI-Fund: `.fab__label` hängt an `.fab`s `width: auto` +
 // `right`-Anchor — anders als ein Fließtext-h1 gibt es hier keinen Flex-
 // Sibling, dessen Box die Restfläche aufsaugen könnte). `optional` statt
-// `block` (issue #920 CI-Fund, tests/uebersicht-ladezustand.spec.ts AC1,
-// zweite Runde): `block` blieb selbst hier ein Risiko — sobald die Schrift
+// `block` (issue #920 CI-Fund, zweite Runde): `block` blieb selbst hier ein Risiko — sobald die Schrift
 // bereit ist, tauscht `block` IMMER nach, egal wie kurz die Wartezeit war.
 // Auf CI (Linux-Chromium) traf genau das zu: das Netz-Log zeigt die
 // Nunito-Datei in ~10-50ms geladen, trotzdem lag zwischen erstem Paint und

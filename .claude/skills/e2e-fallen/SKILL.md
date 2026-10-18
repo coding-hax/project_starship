@@ -30,7 +30,7 @@ läuft in genau einem Projekt.
    `getByRole('link', { name: 'Einstellungen' })`.
 2. **Gegenrichtung SVG.** Eine achsenparallele `<line>` hat eine BBox der Breite
    oder Höhe 0, `toBeVisible()` meldet sie `hidden`. Dort `count()` oder
-   Attribute prüfen (Vorbild `tests/wetter.wide.spec.ts`).
+   Attribute prüfen (Vorbild `git show ca6d4a3:tests/wetter.wide.spec.ts`).
 
 ## Zeit
 
@@ -48,7 +48,7 @@ läuft in genau einem Projekt.
 6. `tests/helpers.ts: registerPasskey` landet auf `/uebersicht`, und die Seite
    fragt open-meteo ab. Jeder Spec, der `/uebersicht` erreicht, mockt
    `https://api.open-meteo.com/**` mit `tests/helpers.ts: openMeteoForecastBody`
-   (Vorbild `tests/figuren.spec.ts`). Ungemockt hängt `networkidle`, oder ein
+   (Vorbild `tests/weather-location.spec.ts`). Ungemockt hängt `networkidle`, oder ein
    Konsolen-Assert wird rot.
 7. `networkidle` meiden: eine zweite Navigation bricht RSC-Prefetches ab, und
    abgebrochene Requests verlassen Playwrights Zählung nie (Laufzeit dann
@@ -70,7 +70,8 @@ läuft in genau einem Projekt.
 ## Farben und Geometrie
 
 12. `getComputedStyle` liefert `oklch(…)` bzw. `color-mix(…)`, kein `rgb(…)`.
-    Über Canvas umrechnen: `tests/seitenleiste-grund.desktop.spec.ts: cssColorToRgb`.
+    Über Canvas umrechnen: `cssColorToRgb` in
+    `git show ca6d4a3:tests/seitenleiste-grund.desktop.spec.ts`.
     Ein Regex-Parser liest `oklch(0.18 …)` als `18,0,0`.
 13. `boundingBox()` enthält Transforms. Erst messen, wenn `el.getAnimations()`
     nichts Laufendes mehr meldet — sonst misst du die Enter-Animation als
@@ -85,7 +86,8 @@ läuft in genau einem Projekt.
     Notch-Zone braucht einen überschreibbaren Anker, sonst ist er grün ohne Aussage.
 17. React 19 flusht Klicks im Microtask: wer im selben `page.evaluate` direkt
     nach `click()` liest, sieht das alte DOM. Erst einen `requestAnimationFrame`
-    abwarten (Vorbild `tests/kalender.spec.ts: agendaAfterDaySwitch`).
+    abwarten (Vorbild `agendaAfterDaySwitch` in
+    `git show ca6d4a3:tests/kalender.spec.ts`).
 18. `page.addInitScript` läuft, bevor `document.head` existiert — ein
     `appendChild` dort verpufft. `addStyleTag` überlebt dafür kein `page.goto`.
 
@@ -93,7 +95,6 @@ läuft in genau einem Projekt.
 
 19. Erfassungs-Specs setzen ihren Text meist über Helfer, nicht über `fill()`:
     `tests/capture.spec.ts: submitQuickAdd`,
-    `tests/capture-art.spec.ts: submitCapture`,
     `tests/capture-uebersicht.spec.ts: submitUebersichtCapture`. Wer Eingaben
     gegen den Parser nachrechnet, greppt alle Wege.
 20. Layout-Specs schreiben Routenzahlen aus („alle neun Routen", `toBe(9)`).

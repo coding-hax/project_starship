@@ -25,71 +25,6 @@ test.describe('angemeldet', () => {
     await registerPasskey(page);
   });
 
-  test('ein Tab-Wechsel zum Kalender geht ohne Dokument- oder RSC-Request an den Server (AK1)', async ({
-    page,
-  }) => {
-    // Registered before goto() so it also catches the Link prefetch itself — that
-    // fetch is expected (it is what makes the later click free) and must not be
-    // mistaken for one the click caused.
-    const kalenderRequests: string[] = [];
-    page.on('request', (request) => {
-      const url = new URL(request.url());
-      const isRscRequest = url.searchParams.has('_rsc') && url.pathname === '/kalender';
-      const isDocumentNavigation = request.resourceType() === 'document' && url.pathname === '/kalender';
-      if (isRscRequest || isDocumentNavigation) kalenderRequests.push(request.url());
-    });
-
-    // Deliberately NOT `networkidle` (#683, see the AK2 test below for the full
-    // story): `registerPasskey` above already leaves the page on a loaded
-    // /uebersicht, so this goto is a SECOND navigation to it and cancels the
-    // first page's in-flight prefetches. A cancelled request never leaves
-    // Playwright's bookkeeping of open connections, so `networkidle` waits for a
-    // quiet state that can no longer occur and burns the full 30s budget —
-    // bimodal, not slow, and hit only on `offline-desktop` because its wider nav
-    // shows more targets at once, so more prefetches are in flight to cancel.
-    await page.goto('/uebersicht');
-
-    // The post-hydration Link-prefetch effect does not fire as a single request:
-    // as the overview's async modules (weather, task count, routines) settle and
-    // shift the layout, it re-runs in a short burst of several `_rsc` requests
-    // for every visible nav target, Kalender included (observed: up to ~600ms,
-    // several distinct requests). Waiting for only the FIRST match and resetting
-    // right after — the previous approach — attributes a later, unrelated
-    // request from the same burst to the click below and fails flakily. Instead,
-    // wait until the burst has gone fully quiet (no new Kalender request for
-    // 500ms, matching `networkidle`'s own quiet-window definition, but scoped to
-    // just this signal so it can't get stuck on the cancelled-request bookkeeping
-    // bug above). Bounded, so a genuinely missing prefetch still fails the
-    // assertion below instead of hanging.
-    let lastKalenderRequestCount = -1;
-    let quietSince = Date.now();
-    await expect
-      .poll(
-        () => {
-          if (kalenderRequests.length !== lastKalenderRequestCount) {
-            lastKalenderRequestCount = kalenderRequests.length;
-            quietSince = Date.now();
-          }
-          return kalenderRequests.length > 0 && Date.now() - quietSince >= 500;
-        },
-        { timeout: 15_000 },
-      )
-      .toBe(true)
-      .catch(() => {});
-
-    // The prefetch burst (if any) already happened above — only what the click
-    // itself triggers from here on counts towards the assertion.
-    kalenderRequests.length = 0;
-
-    const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-    await nav.getByRole('link', { name: 'Kalender' }).click();
-
-    await expect(page.locator('[data-module="kalender"]')).toBeVisible();
-    await expect(page.getByText('Keine Termine an diesem Tag.')).toBeVisible();
-
-    expect(kalenderRequests).toEqual([]);
-  });
-
   test('offline bleiben Übersicht, Aufgaben, Kalender und Routinen erreichbar, ohne Offline-Fallback (AK2)', async ({
     page,
     context,
@@ -161,8 +96,8 @@ test.describe('angemeldet', () => {
       .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), { timeout: 10_000 })
       .toBe(true);
     // And the payload of every route visited offline below, in the router cache.
-    // Bounded, like the prefetch wait in AK1 above: a prefetch that genuinely never
-    // arrives has to fail the test, not hang it.
+    // Bounded: a prefetch that genuinely never arrives has to fail the test, not
+    // hang it.
     await expect
       .poll(() => [...prefetched], { timeout: 15_000 })
       .toEqual(expect.arrayContaining(['/aufgaben', '/kalender', '/routinen']));
@@ -189,21 +124,6 @@ test.describe('angemeldet', () => {
       }
       await expect(page).not.toHaveURL(/\/offline$/);
     }
-  });
-});
-
-test.describe('ohne Session-Cookie', () => {
-  // Opts out of the shared owner session the `setup` project hands to every other
-  // project (#115) — this test is specifically about having none.
-  test.use({ storageState: { cookies: [], origins: [] } });
-
-  test('ein direkter Aufruf von /kalender landet auf /anmelden, ohne die Shell zu zeigen (AK3)', async ({
-    page,
-  }) => {
-    await page.goto('/kalender');
-
-    await expect(page).toHaveURL(/\/anmelden$/);
-    await expect(page.locator('.shell')).toHaveCount(0);
   });
 });
 

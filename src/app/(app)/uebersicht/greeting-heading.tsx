@@ -30,8 +30,7 @@ const NBSP = ' ';
  * NBSP statt leerem String vor der Hydration: ein wirklich leeres h1 hat keine
  * Zeilenbox und damit Höhe 0, ein einzelnes NBSP dagegen belegt schon dieselbe
  * Zeilenhöhe wie die spätere Begrüßung — sonst wächst der Titel-Cluster beim
- * Hydration-Flip von 0 auf eine Zeile (CI-Fund AC1 aus
- * uebersicht-ladezustand.spec.ts). Die zweite Hälfte davon — den Umbruch auf
+ * Hydration-Flip von 0 auf eine Zeile (issue #920 CI-Fund). Die zweite Hälfte davon — den Umbruch auf
  * eine zweite Zeile bei „Guten Morgen"/„Guten Mittag" verhindern — übernimmt
  * `white-space: nowrap` auf `.uebersicht__title-cluster h1` in uebersicht.css.
  */

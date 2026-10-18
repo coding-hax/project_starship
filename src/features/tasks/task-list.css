@@ -60,8 +60,7 @@
      (`.task-list__item`), so an inline padding here as well would double the
      inset every row (and the header, see below) sits at, squeezing the
      available title width enough to wrap text that fit before and throw off
-     row height/position (issues found via #866 CI: checkoff-motion AC5,
-     tasks.spec.ts AK7). */
+     row height/position (#866). */
   padding-block: var(--space-4);
   /* Own surface, own ink (issue #832 AK5) — same reset every other floating
      surface in this app uses (section-card.css, habit-today.css), now set

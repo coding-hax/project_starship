@@ -3,25 +3,18 @@
 - `.claude/skills/e2e-fallen/SKILL.md` — bekannte Playwright-Fallen + Helfer, vor jedem Spec laden
 - `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock, parallele Läufe
 - `route-readiness.ts` — Warten auf kalte, authentifizierte Dev-Route vor Setup-Navigation
-- `shell.spec.ts` / `nav-order.spec.ts` / `grundfarbe.spec.ts` / `seitenkopf.spec.ts` — Login/Tabs/Header/Karussell; Seitengrund+Kopf
-- `seitenkopf.wide.spec.ts` — ab 1440px einzeilig
-- `kalender.wide.spec.ts` — ab 1440px Monatsraster breit, Agenda schmal, Chips statt Punkte
-- `section-card.desktop.spec.ts` / `shell.wide.spec.ts` / `uebersicht.desktop.spec.ts` / `seitenleiste-grund.desktop.spec.ts` — Deckel weg 768px, 1800px o. Querlauf; 2-spaltig+FAB; Nav o. Fläche
-- `uebersicht.wide.spec.ts` — ab 1440px dreispaltig, Wetter/Termine als volle Bahn
-- `uebersicht-progress-ring.wide.spec.ts` — ab 1440px Tagesfortschritt als Zählpille statt „N/M"
-- `grundfarbe-vollfarbe.spec.ts` / `nav-schleier.spec.ts` / `abgleich-828.spec.ts` — Vollfarbe (Karten/Leiste/FAB), Nav-Grundkopie, Kopf-Recolor
-- `navigation.prod.spec.ts` / `export.spec.ts` / `kalender.spec.ts` / `journal.desktop.spec.ts` — Tab-Wechsel o. Doc-Request; Export+Tombstones; Kalender-Timeline/Farbkante; Journal 2-spaltig 768px
-- `shipped.prod.spec.ts` / `playwright.shipped.config.ts` — Rauchtest gegen Bündel
-- `tasks.spec.ts` / `uebersicht.spec.ts` / `capture.spec.ts` — Liste, Filter, Freitext, offline
-- `capture-{uebersicht,router,routine-neu}.spec.ts` — Erfassungsknopf: Termin/Routine/Aufgabe
-- `capture-{parser,zeigerzeit,datum,unsicher}.spec.ts` — Grammatik: Zeigerzeit, Datum, Unsicher-Markierung
-- `habits.spec.ts` / `habits-{uebersicht,week-grid}.spec.ts` / `streaks.spec.ts` — Verwaltung, Streaks
-- `helpers.ts` / `routinen.spec.ts` / `habits-streak-summary.spec.ts` / `form-bedienelemente.spec.ts` — Test-Helfer; Routinen-Kopf/Kacheln/Verlauf; FAB-Pille/Reiter/Häkchen
-- `scroll-position.spec.ts` / `persist-storage.spec.ts` / `settings.spec.ts` / `schema.spec.ts` — Scroll-Reset, Storage-Persistenz, Theme/Toggle, Schema-Exaktheit
-- `offline-critical.spec.ts` / `sync.spec.ts` / `weather.spec.ts` / `weather-day.spec.ts` — Outbox-Postgres/Konflikte; Wetter Übersicht/Tagesdetail
-- `wetter.wide.spec.ts` — ab 1440px zweispaltiges Tagesraster + Tagesnummer (Streifen); zweispaltiges Tagesdetail + Wertachsen (Tagesdetail)
-- `routinen.wide.spec.ts` — ab 1440px Tabelle links über beide Zeilen, Kacheln+Verlauf rechts 440px
-- `journal.spec.ts` / `journal-{suche,tageswechsel,jahre}.spec.ts` — Einträge, Suche, Tageswechsel, „An diesem Tag"
-- `journal-{recovery,recovery-reissue,key-race}.spec.ts` — Recovery-Kit, Key neu ausstellen, Erst-Setup-Race
-- `push-reminders.spec.ts` / `reminder-prefs.spec.ts` / `modules.spec.ts` — Reminder, Push-Panel, Modul-Panel/Route-Guard
-- `mandant.spec.ts` — Trennung zweier Konten: Pull, Push, Sperre, Kaskade, feste IDs
+- `helpers.ts` / `auth.setup.ts` — Test-Helfer; echte Passkey-Zeremonie einmal je Lauf
+- `shell.spec.ts` / `nav-order.spec.ts` / `page-transition.spec.ts` — Login-Gate, alle Tabs, Nav-Reihenfolge, globales reduced-motion
+- `settings.spec.ts` / `modules.spec.ts` / `toast.spec.ts` / `sheet-tastatur.spec.ts` — Dark Mode, Kategoriefarben; Modul-Guard; Sync-Fehler-Toast; Sheet bei Tastatur
+- `sync.spec.ts` / `mandant.spec.ts` / `export.spec.ts` / `persist-storage.spec.ts` — Outbox/Pull/Konflikte; Kontentrennung; Export+Tombstones; Storage-Persistenz
+- `offline-critical.spec.ts` / `navigation.prod.spec.ts` / `csp.prod.spec.ts` / `push-sw.prod.spec.ts` — Prod-Build: SW-Offline-Kreis, Tabs offline, CSP, Push-Handler
+- `shipped.prod.spec.ts` / `smoke.prod.spec.ts` / `playwright.shipped.config.ts` — Rauchtest gegen Bündel; Post-Deploy-Rauchtest
+- `auth-{geraete,sperren,recovery-register}.spec.ts` / `auth-{verify,rate-limit}.spec.ts` — Passkeys/Sitzungen, Sperren, Recovery; Verify-Fehler, Rate-Limit
+- `push.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` / `schema.spec.ts` — Push-Abo; Reminder-Versand; Reminder-Panel; Schema-Exaktheit
+- `tasks.spec.ts` / `uebersicht.spec.ts` / `uebersicht-{ladezustand,begruessung}.spec.ts` — Aufgaben-Schreibwege, Filter; Übersicht: Woche, nächster Termin, Laden
+- `capture.spec.ts` / `capture-{uebersicht,router,routine-neu}.spec.ts` / `capture-{art,wiederholung,zeigerzeit}.spec.ts` — Freitext → Aufgabe/Termin/Routine, Bestätigung
+- `kalender.spec.ts` — Agenda, Editor, Serien+Ausnahmen, Woche/Monat, ICS-Abo inkl. SSRF
+- `habits.spec.ts` / `habits-{uebersicht,week-grid,streak-summary}.spec.ts` / `routinen-rename.spec.ts` — Routinen-Schreibwege, Abhaken, Raster, Verlauf; Route
+- `journal.spec.ts` / `journal-{suche,tageswechsel,jahre}.spec.ts` — Einträge, Migrationen, Suche, Tageswechsel, Tagesschlüssel
+- `journal-{lock,tombstone}.spec.ts` / `journal-{recovery,recovery-reissue,key-race}.spec.ts` — Sperren, Schlüssel-Tombstone; Recovery, Key neu, Erst-Setup-Race
+- `weather.spec.ts` / `weather-day.spec.ts` / `weather-location.spec.ts` — Wetter Übersicht/Tagesdetail/Ort, offline aus der Ablage

@@ -11,7 +11,7 @@
  *
  * Unter 1440px bleibt `[data-ground='routinen']` normaler Block-Fluss —
  * diese Datei greift dort gar nicht ein, die bisherige Reihenfolge Kacheln →
- * Tabelle → Verlauf → Archiviert (routinen.spec.ts AK1) bleibt unverändert
+ * Tabelle → Verlauf → Archiviert bleibt unverändert
  * stehen.
  */
 @media (min-width: 1440px) {

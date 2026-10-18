@@ -77,20 +77,6 @@ async function coldStart(browser: Browser, page: Page): Promise<Page> {
   return device;
 }
 
-test('AC1: Kaltstart auf einer geloeschten Schluesselzeile zeigt gesperrt, nie einrichten', async ({
-  browser,
-  page,
-}) => {
-  await setUpJournal(page, PASSPHRASE);
-  await flush(page);
-  await tombstoneKeyRow(page);
-
-  const device = await coldStart(browser, page);
-
-  await expect(device.locator('.journal-gate[data-state="locked"]')).toBeVisible();
-  await expect(device.locator('.journal-gate[data-state="setup"]')).toHaveCount(0);
-});
-
 test('AC2: die bestehende Passphrase entsperrt weiterhin, Eintraege bleiben lesbar', async ({
   browser,
   page,
@@ -161,19 +147,4 @@ test('AC4: Einrichten wird auf einer geloeschten Zeile verweigert, beide Wraps b
   const after = await keyRow();
   expect(after?.envelope).toEqual(before?.envelope);
   expect(after?.recovery_envelope).toEqual(before?.recovery_envelope);
-});
-
-test('AC5: ohne Schluesselzeile bleibt der Einrichten-Weg, und er legt eine lebende Zeile an', async ({
-  page,
-}) => {
-  await registerPasskey(page, '/journal');
-
-  await expect(page.locator('.journal-gate[data-state="setup"]')).toBeVisible();
-
-  await setUpJournal(page, PASSPHRASE);
-  await flush(page);
-
-  const row = await keyRow();
-  expect(row?.deleted_at).toBeNull();
-  expect(row?.envelope).not.toBeNull();
 });

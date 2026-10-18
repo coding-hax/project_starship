@@ -68,10 +68,10 @@ function clearTextSelection() {
  *
  * Deliberately does NOT touch the trigger element's DOM state (`inert`/`aria-hidden`)
  * while open: this component is shared across features (journal's FAB, tasks'
- * quick-add, habit editors, …), and `tests/design-system.spec.ts`'s z-scale AC3
- * relies on the trigger staying normally queryable — just visually covered by the
- * modal backdrop — while its own sheet is open. A trigger whose accessible name
- * collides with something inside its own sheet (journal's FAB/submit button both
+ * quick-add, habit editors, …), so the trigger stays normally queryable — just
+ * visually covered by the modal backdrop — while its own sheet is open. A trigger
+ * whose accessible name collides with something inside its own sheet (journal's
+ * FAB/submit button both
  * "Eintragen", #701) is that one consumer's problem to disambiguate, e.g. by
  * scoping test locators to a CSS class instead of relying on this component to
  * hide the trigger for everyone.

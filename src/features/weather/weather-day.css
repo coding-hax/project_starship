@@ -64,8 +64,7 @@
      Zurück-Link — ohne nowrap würde ein langer Wochentag ("Donnerstag, …")
      in zwei Zeilen umbrechen, sobald ihm die Breite fehlt. Das vergrößerte
      die Kopfzeile über die 44px des Zurück-Links hinaus und riss den Spalt
-     zur ersten Box auf (weather-day.spec.ts, „der Spalt … ist nach #353 noch
-     kleiner …"). */
+     zur ersten Box auf (#353). */
   white-space: nowrap;
   /* Sicherheitsnetz statt zweiter Zeile (issue #850 AC10): reicht die Breite
      bei einem langen Wochentag neben dem Zurück-Link nicht ganz, schrumpft

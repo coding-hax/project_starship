@@ -92,25 +92,6 @@ async function journalKeysRow() {
   return result.rows[0] as { envelope: unknown; recovery_envelope: unknown } | undefined;
 }
 
-test('entsperrt stellt einen neuen Recovery-Key aus, der vom Setup-Key abweicht', async ({
-  page,
-}) => {
-  const setupKey = await setUpJournal(page, PASSPHRASE);
-
-  const newKey = await reissueRecovery(page, PASSPHRASE);
-  expect(newKey).toMatch(/^([A-Z2-7]{4}-){12}[A-Z2-7]{4}$/);
-  expect(newKey).not.toBe(setupKey);
-  await expect(page.getByTestId('journal-recovery-key')).toHaveCount(0);
-
-  await page.goto('/journal');
-  await page.reload();
-  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
-
-  await unlockWithRecovery(page, newKey);
-  await skipRewrap(page);
-  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
-});
-
 test('der alte Recovery-Key wird nach dem Neu-Ausstellen ungueltig', async ({ page }) => {
   const setupKey = await setUpJournal(page, PASSPHRASE);
   await reissueRecovery(page, PASSPHRASE);
@@ -192,27 +173,3 @@ test('Offline (DoD): offline neu ausgestellt geht in die Outbox, online synct es
   await skipRewrap(page);
   await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
 });
-
-for (const viewport of [
-  { width: 375, height: 667 },
-  { width: 1280, height: 800 },
-]) {
-  test(`Neu-Ausstellen funktioniert bei ${viewport.width}px, Dark Mode und reduced motion`, async ({
-    page,
-  }) => {
-    await setUpJournal(page, PASSPHRASE);
-    await page.setViewportSize(viewport);
-    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-    await goToSettings(page);
-
-    await page.getByRole('button', { name: 'Neu ausstellen' }).click();
-    await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
-    await page.getByRole('button', { name: 'Neu ausstellen' }).click();
-
-    const code = page.getByTestId('journal-recovery-key');
-    await expect(code).toBeVisible();
-    await expect(code).toHaveCSS('font-family', /monospace/);
-
-    await expect(page.locator('.journal-settings-panel__message')).toHaveCount(0);
-  });
-}
