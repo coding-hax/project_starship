@@ -250,6 +250,44 @@ describe('prompts', () => {
     });
   });
 
+  // #1222: an #1210 widersprachen sich Prompt und ADR-0026 ueber die
+  // Ausloesebedingung der Zwei-Runden-Regel, der Pruefer durchsuchte nur die
+  // gekuerzte Kriteriumsspalte und meldete bei einem Muster-Fund nur den
+  // ersten Treffer, und die vierte Runde setzte needs-answer ohne Frage.
+  describe('AK-Check-Prompt: Zwei-Runden-Regel praezisiert (#1222)', () => {
+    const prompt = checkPrompt(42, ['A tut X', 'B bleibt Y'], 'feat/42-x');
+    const anchor = 'dasselbe Kriterium in zwei aufeinanderfolgenden Runden offen';
+
+    it('AK1: nennt die eindeutige Ausloesebedingung und nicht mehr die mehrdeutige', () => {
+      expect(prompt).toContain(anchor);
+      expect(prompt).not.toContain('mit offenen Kriterien');
+    });
+
+    it('AK1: ADR-0026 nennt denselben Kern-Wortlaut der Ausloesebedingung', () => {
+      const adr = readFileSync(
+        join(__dirname, '..', '..', 'docs', 'adr', '0026-ak-check-als-merge-tor.md'),
+        'utf-8',
+      );
+      expect(adr).toContain(anchor);
+    });
+
+    it('AK2: ein needs-answer aus diesem Zweig verlangt zuerst eine beantwortbare Frage', () => {
+      expect(prompt).toContain('Optionen (A/B …)');
+      expect(prompt).toContain('und dem, was passiert, wenn niemand\nantwortet');
+      expect(prompt.indexOf('Optionen (A/B …)')).toBeLessThan(prompt.indexOf('--add-label needs-answer'));
+    });
+
+    it('AK3: verlangt den vollen Wortlaut und erklaert die gekuerzte Spalte zur reinen Anzeige', () => {
+      expect(prompt).toContain('jedes Kriterium im **vollen Wortlaut**');
+      expect(prompt).toContain('**nur Anzeige**, nie die Suchgrundlage');
+    });
+
+    it('AK4: verlangt bei einem Muster-Fund die vollstaendige Trefferliste statt des ersten Treffers', () => {
+      expect(prompt).toContain('**vollständigen**\n   Liste aller Stellen');
+      expect(prompt).toContain('nicht mit dem ersten\n   Treffer');
+    });
+  });
+
   // #901: der Pruefer hinterlaesst IMMER eine sichtbare Anmerkung -- auch wenn
   // alles passt und er direkt freigibt -- und postet sie VOR dem Merge, sonst
   // laege sie auf einem bereits geschlossenen Ticket (oder gar nicht) vor.
