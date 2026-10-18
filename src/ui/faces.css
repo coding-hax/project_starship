@@ -1,9 +1,8 @@
 /*
  * Page faces, one per route (S4 of #828, issue #830; redrawn against the
  * design sheet in issue #850). 42px so a halbhoher Seitenkopf (22px h1,
- * --text-page-title) never grows past its own line — seitenkopf.spec.ts AK5
- * and figuren.spec.ts's own regression gate (`scrollHeight <= clientHeight`)
- * are the guards.
+ * --text-page-title) never grows past its own line (`scrollHeight <=
+ * clientHeight`).
  */
 
 .face {

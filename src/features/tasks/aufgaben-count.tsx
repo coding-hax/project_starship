@@ -13,8 +13,8 @@ const NBSP = ' ';
  * NBSP statt `null` während `useTasks()` noch lädt (gleiches Muster wie
  * `TodayLongDate`/`GreetingHeading`): ein leeres Element hat Höhe 0, die
  * Augenbraue-Zeile wächst sonst beim Eintreffen der ersten IndexedDB-Antwort
- * von 0 auf eine Zeile und verschiebt den Titel darunter (CI-Fund
- * formsprache.spec.ts AK6, gemessener Layout-Shift 0,0063 > Schwelle 0,001).
+ * von 0 auf eine Zeile und verschiebt den Titel darunter (CI-Fund,
+ * gemessener Layout-Shift 0,0063 > Schwelle 0,001).
  */
 export function AufgabenCount() {
   const tasks = useTasks();

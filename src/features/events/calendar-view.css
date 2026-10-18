@@ -56,8 +56,8 @@
    1440px unsichtbar: die Spalten des Wochenstreifens tragen dort keinen
    eigenen Tages-Titel, doch ein Duplikat der Monats-Überschrift wäre dort
    trotzdem Dopplung mit dem, was der Streifen im Kopf bereits nennt (AK3
-   erst ab 1440px verlangt) — `display: none`, nicht `toHaveCount(0)`
-   (kalender.spec.ts), das treue Bild von „keine zweite Überschrift
+   erst ab 1440px verlangt) — `display: none`, nicht `toHaveCount(0)`:
+   das treue Bild von „keine zweite Überschrift
    sichtbar", nicht „gar nicht gerendert" (R1/#1124-Plan). `:not(:has(>
    .month-grid))` ist dasselbe Woche/Monat-Unterscheidungsmerkmal wie der
    768px-Zweispalter oben — die Monats-Überschrift bleibt davon unberührt,

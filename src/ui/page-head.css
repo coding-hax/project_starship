@@ -1,7 +1,7 @@
 /**
  * PageHead (issue #868, T1 von #861): drei Zonen — Augenbraue, Titelzeile,
- * Zusatz. `border-radius: 0` + kein Hintergrund-Verlauf hält
- * `seitenkopf.spec.ts` AK1 (`assertFlatHeader`) grün.
+ * Zusatz. `border-radius: 0` + kein Hintergrund-Verlauf: der Kopf bleibt
+ * flach (#868 AK1).
  */
 
 .page-head {

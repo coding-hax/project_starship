@@ -543,8 +543,7 @@ export function TaskList({
    * last sibling — deleted, or filtered out of "Alle" as completed — is still in
    * `presenceRows` mid-exit-animation (`status: 'leaving'`), and swapping the
    * `<ul>` out from under it the instant the underlying data hits zero would
-   * cut that animation off before it ever painted (issue #430's guarantee,
-   * list-motion.spec.ts AC2).
+   * cut that animation off before it ever painted (issue #430's guarantee).
    */
   const emptyMessage =
     tasks === undefined
