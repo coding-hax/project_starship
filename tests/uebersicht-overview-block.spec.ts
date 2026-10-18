@@ -69,18 +69,20 @@ test('Termine und Routinen haben auf /uebersicht ein sichtbares h2 im Kartenkopf
   await expect(page.getByRole('heading', { name: 'Routinen', level: 2 })).toBeVisible();
 });
 
-test('Wetter und Aufgaben haben auf /uebersicht ein h2 mit dem Modulnamen, das im DOM bleibt, aber verborgen ist (AK3)', async ({
+test('Wetter hat auf /uebersicht ein h2 mit dem Modulnamen, das im DOM bleibt, aber verborgen ist (AK3)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
 
   // Wetter geht hier über den Fehlerzustand (open-meteo im beforeEach oben
   // aborted) — die Überschrift muss auch dann im DOM stehen, nicht nur beim Erfolg.
-  for (const name of ['Wetter', 'Aufgaben']) {
-    const heading = page.getByRole('heading', { name, level: 2 });
-    await expect(heading).toHaveCount(1);
-    expect(await isVisuallyHidden(heading), `${name}-Überschrift muss verborgen sein`).toBe(true);
-  }
+  // Aufgaben gehörte früher mit in diese Schleife, seit issue #1217 AK2 ist seine
+  // Überschrift nicht mehr unbedingt verborgen (sichtbarer Kartenkopf im
+  // Leerzustand) — dafür eigene Tests in uebersicht.spec.ts (gefüllt: verborgen,
+  // leer: sichtbar).
+  const heading = page.getByRole('heading', { name: 'Wetter', level: 2 });
+  await expect(heading).toHaveCount(1);
+  expect(await isVisuallyHidden(heading), 'Wetter-Überschrift muss verborgen sein').toBe(true);
 });
 
 test('AK1: keine eigene Überschriftenzeile mehr auf dem Seitengrund — der Punkt in Bereichsfarbe entfällt ersatzlos', async ({

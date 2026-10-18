@@ -146,7 +146,12 @@ test.describe('Design-System: Typo-Skala Überschriften (issue #651)', () => {
   test('AC1: h2 rendert in --text-section auf /uebersicht', async ({ page }) => {
     await registerPasskey(page, '/uebersicht');
 
-    const h2 = page.getByRole('heading', { name: 'Aufgaben', level: 2 });
+    // Wetter, nicht Aufgaben: dessen Modul-h2 bleibt immer `OverviewBlock`s
+    // unstyled `hiddenTitle` (nie die auf --text-body zurückgestufte
+    // `OverviewCardHead`, issue #653 AK2) — Aufgabens h2 wechselt je nach
+    // Leer-/Füllzustand zwischen beidem (issue #1217 AK2) und wäre damit kein
+    // stabiler Anker für die globale h2-Regel.
+    const h2 = page.getByRole('heading', { name: 'Wetter', level: 2 });
     const [fontSize, textSection] = await Promise.all([
       h2.evaluate((el) => getComputedStyle(el).fontSize),
       page.evaluate(() =>
