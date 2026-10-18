@@ -57,11 +57,14 @@ function progressFor(page: Page, title: string) {
 
 /** Content anchor for the Aufgaben section (issue #972 AK3: the module `<h2>`
  * is visually hidden) — whichever of list/empty-state is actually rendered.
- * `.task-list__surface` (issue #996), not the inner `.task-list` `<ul>` — the
- * surface is what now carries the card's own `--space-4` padding, so its box
- * is what stays comparable to `.task-list__empty`'s reserved height below. */
+ * Always `.task-list__surface` (issue #996, and since issue #1217 AK1 the
+ * empty state is one too — no bare `.task-list__empty` left standing on its
+ * own on /uebersicht, so that fallback would now double-match the `<p>`
+ * nested inside this very surface). The surface is what carries the card's
+ * own `--space-4` padding, so its box is what stays comparable across empty
+ * and filled renders. */
 function aufgabenContent(page: Page): Locator {
-  return page.locator('.task-list__surface, .task-list__empty');
+  return page.locator('.task-list__surface');
 }
 
 /** Content anchor for the Routinen section (issue #972 AK2: the module keeps
