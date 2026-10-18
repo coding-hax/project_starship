@@ -76,6 +76,14 @@ Code *und* einen Test (außer bei `tests-exempt`). `nicht prüfbar` ist ein
 eigener Befund und zählt fürs Tor wie `nicht erfüllt` — er sagt dem nächsten
 Bau-Lauf, dass ein Beleg fehlt, nicht Code.
 
+> **Nachtrag #1215 — Optik-Kriterien brauchen keinen Test.** `erfüllt`
+> verlangt Code **und** Test, außer bei `tests-exempt` (ticketweit) **oder**
+> bei einem Kriterium, das mit `(prüft der Mensch am Gerät)` markiert ist
+> (K-/D-Regeln: [ADR-0032](0032-e2e-pflicht-nach-k-regeln.md)). Für ein so
+> markiertes Kriterium genügt der Code-Beleg allein. Der Marker befreit nur
+> vom Test, nicht vom Beleg: ein markiertes Kriterium ohne jede Code-Stelle
+> bleibt `nicht prüfbar`.
+
 **4. Bei einer Lücke geht das Ticket zurück in den Bau,** nicht an den
 Menschen: `check` fällt weg, `in-progress` bleibt, die offenen Punkte stehen im
 Fortschrittskommentar. Erst der **zweite** vergebliche Check endet mit
