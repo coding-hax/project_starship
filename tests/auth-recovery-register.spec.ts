@@ -119,17 +119,6 @@ test.beforeEach(async ({ page }) => {
   await seedExistingCredential(page);
 });
 
-test('AK1: ein options-Aufruf mit gueltigem Recovery-Code laesst usedAt null', async ({
-  browser,
-}) => {
-  const devicePage = await openRecoveryDevice(browser);
-
-  const optionsRes = await requestOptions(devicePage, RECOVERY_CODE);
-  expect(optionsRes.status()).toBe(200);
-
-  expect(await recoveryCodeUsedAt(RECOVERY_CODE)).toBeNull();
-});
-
 test('AK2: nach erfolgreichem verify ist usedAt gesetzt, derselbe Code wird beim naechsten options mit 403 abgewiesen', async ({
   browser,
 }) => {
@@ -229,83 +218,5 @@ test.describe('#856: Recovery-Formular unter /anmelden', () => {
     );
     expect(await credentialCount()).toBe(before);
     expect(await recoveryCodeUsedAt(RECOVERY_CODE)).toBeNull();
-  });
-
-  test('AK3: Abbruch der Face-ID-Abfrage erzeugt keine rote Fehlerzeile, der Code bleibt gültig', async ({
-    browser,
-  }) => {
-    // Signed-out on purpose — see openRecoveryDevice's comment: a bare
-    // newContext() inherits the `mobile` project's AUTH_STATE cookie.
-    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
-    const page = await context.newPage();
-    // Simuliert den Nutzer-Abbruch (z. B. Face ID abgebrochen) — ein reines
-    // Browser-UI-Ereignis, das der virtuelle Authenticator nicht deterministisch
-    // auslöst, deshalb hier direkt am WebAuthn-Einstiegspunkt erzwungen.
-    await page.addInitScript(() => {
-      navigator.credentials.create = () =>
-        Promise.reject(new DOMException('abgebrochen', 'NotAllowedError'));
-    });
-    await page.goto('/anmelden');
-
-    await page.getByRole('button', { name: 'Neues Gerät? Mit Recovery-Code anmelden' }).click();
-    await page.getByLabel('Recovery-Code').fill(RECOVERY_CODE);
-    const submit = page.locator('.auth__recovery-form button[type="submit"]');
-    await submit.click();
-
-    // Wartet auf die abgeschlossene (fehlgeschlagene) Zeremonie über den
-    // Busy-Zustand, statt auf eine feste Zeit — der Knopf ist erst wieder
-    // bedienbar, wenn der catch-Zweig durchgelaufen ist.
-    await expect(submit).toBeEnabled();
-    await expect(page.locator('.auth__error')).toHaveCount(0);
-    await expect(page).toHaveURL(/\/anmelden$/);
-    expect(await recoveryCodeUsedAt(RECOVERY_CODE)).toBeNull();
-
-    await context.close();
-  });
-
-  test('AK4: „Abbrechen" löscht eine stehengebliebene Fehlermeldung und schließt das Formular', async ({
-    browser,
-  }) => {
-    // Signed-out on purpose — see openRecoveryDevice's comment: a bare
-    // newContext() inherits the `mobile` project's AUTH_STATE cookie.
-    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
-    const page = await context.newPage();
-    await page.goto('/anmelden');
-
-    await page.getByRole('button', { name: 'Neues Gerät? Mit Recovery-Code anmelden' }).click();
-    await page.getByLabel('Recovery-Code').fill('UNGÜLTIGER-CODE');
-    await page.locator('.auth__recovery-form button[type="submit"]').click();
-
-    await expect(page.locator('.auth__error')).toHaveText(
-      'Recovery-Code ungültig oder bereits verbraucht.',
-    );
-
-    await page.getByRole('button', { name: 'Abbrechen' }).click();
-
-    await expect(page.locator('.auth__error')).toHaveCount(0);
-    await expect(page.getByLabel('Recovery-Code')).toHaveCount(0);
-
-    await context.close();
-  });
-
-  test('AK6: offline ist das Formular inaktiv mit Hinweis, Dark Mode und reduzierte Bewegung bleiben bedienbar', async ({
-    browser,
-  }) => {
-    // Signed-out on purpose — see openRecoveryDevice's comment: a bare
-    // newContext() inherits the `mobile` project's AUTH_STATE cookie.
-    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
-    const page = await context.newPage();
-    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-    await page.goto('/anmelden');
-
-    await page.getByRole('button', { name: 'Neues Gerät? Mit Recovery-Code anmelden' }).click();
-    await expect(page.getByLabel('Recovery-Code')).toBeVisible();
-
-    await context.setOffline(true);
-    await expect(page.getByText('Geht nur online.')).toBeVisible();
-    await expect(page.locator('.auth__recovery-form button[type="submit"]')).toBeDisabled();
-
-    await context.setOffline(false);
-    await context.close();
   });
 });

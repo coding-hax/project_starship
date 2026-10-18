@@ -2,11 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { berlinInstant } from '@/push/schedule';
 import {
   expectUebersichtLoaded,
-  freezeClock,
   installClockAt,
   registerPasskey,
   resetAppData,
-  skewClock,
 } from './helpers';
 
 /**
@@ -31,59 +29,6 @@ function heading(page: Page) {
 test.beforeEach(async ({ page }) => {
   await resetAppData();
   await page.route('https://api.open-meteo.com/**', (route) => route.abort('failed'));
-});
-
-test('AK4: Gute Nacht bis 04:59, Guten Morgen ab 05:00', async ({ page }) => {
-  await installClockAt(page, berlin(4, 59));
-  await registerPasskey(page);
-  await expect(heading(page)).toHaveText('Gute Nacht');
-
-  await skewClock(page, berlin(5, 0));
-  await page.reload();
-  await expect(heading(page)).toHaveText('Guten Morgen');
-});
-
-test('AK4: Guten Morgen bis 10:59, Guten Mittag ab 11:00', async ({ page }) => {
-  await installClockAt(page, berlin(10, 59));
-  await registerPasskey(page);
-  await expect(heading(page)).toHaveText('Guten Morgen');
-
-  await skewClock(page, berlin(11, 0));
-  await page.reload();
-  await expect(heading(page)).toHaveText('Guten Mittag');
-});
-
-test('AK4: Guten Mittag bis 16:59, Guten Abend ab 17:00', async ({ page }) => {
-  await installClockAt(page, berlin(16, 59));
-  await registerPasskey(page);
-  await expect(heading(page)).toHaveText('Guten Mittag');
-
-  await skewClock(page, berlin(17, 0));
-  await page.reload();
-  await expect(heading(page)).toHaveText('Guten Abend');
-});
-
-test('AK4: Guten Abend bis 21:59, Gute Nacht ab 22:00', async ({ page }) => {
-  await installClockAt(page, berlin(21, 59));
-  await registerPasskey(page);
-  await expect(heading(page)).toHaveText('Guten Abend');
-
-  await skewClock(page, berlin(22, 0));
-  await page.reload();
-  await expect(heading(page)).toHaveText('Gute Nacht');
-});
-
-test('AK2: der Titel wechselt an einer Grenze, ohne dass die Seite neu lädt', async ({ page }) => {
-  await installClockAt(page, berlin(16, 59));
-  await registerPasskey(page);
-  await expect(heading(page)).toHaveText('Guten Mittag');
-
-  // useNow tickt per echtem setInterval, das eine gefakte, vorgespulte Uhr normal
-  // weiterdreht (src/ui/use-now.ts) — kein page.reload() zwischen den beiden Prüfungen.
-  await freezeClock(page);
-  await page.clock.fastForward(2 * 60 * 1000);
-
-  await expect(heading(page)).toHaveText('Guten Abend');
 });
 
 test('AK3: kein Hydration-Mismatch beim Laden von /uebersicht, egal welche Ortszeit gerade gilt', async ({

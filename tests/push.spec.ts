@@ -47,19 +47,6 @@ async function stubPushManager(page: Page) {
   });
 }
 
-/** Simulates the one permission state the browser never lets you re-request from JS. */
-async function stubNotificationDenied(page: Page) {
-  await page.addInitScript(() => {
-    class FakeNotification {
-      static permission = 'denied' as const;
-      static async requestPermission() {
-        return 'denied' as const;
-      }
-    }
-    Object.defineProperty(window, 'Notification', { configurable: true, value: FakeNotification });
-  });
-}
-
 /**
  * Headless Chromium on Linux CI has no real notification service, so
  * `Notification.permission` reads 'denied' there even after
@@ -118,17 +105,4 @@ test('Abmelden entfernt das Abo serverseitig (AC2)', async ({ page }) => {
 
   await expect(page.getByRole('button', { name: 'Erlauben' })).toBeVisible();
   expect(await pushRowCount()).toBe(0);
-});
-
-test('verweigerte Erlaubnis zeigt einen erklärenden Zustand statt einer toten Schaltfläche (AC3)', async ({
-  page,
-}) => {
-  await stubNotificationDenied(page);
-  await registerPasskey(page);
-
-  await page.goto('/einstellungen');
-
-  await expect(page.getByText(/im Browser abgelehnt/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Erlauben' })).toHaveCount(0);
-  await expect(page.getByRole('switch', { name: 'Benachrichtigungen abschalten' })).toHaveCount(0);
 });

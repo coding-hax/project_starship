@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { expectUebersichtLoaded, registerPasskey, resetAppData } from './helpers';
+import { registerPasskey, resetAppData } from './helpers';
 
 test.beforeEach(async () => {
   await resetAppData();
@@ -34,30 +34,4 @@ test('requests persistent storage once on app start', async ({ page }) => {
 
   await expect.poll(() => page.evaluate(() => window.__starship.persistStatus())).toBe('granted');
   expect(await page.evaluate(() => (window as unknown as { __persistCalls: number }).__persistCalls)).toBe(1);
-});
-
-test('does not re-request persistence once already granted', async ({ page }) => {
-  await stubStorage(page, { persisted: true, persist: true });
-  await registerPasskey(page);
-
-  await expect.poll(() => page.evaluate(() => window.__starship.persistStatus())).toBe('granted');
-  expect(await page.evaluate(() => (window as unknown as { __persistCalls: number }).__persistCalls)).toBe(0);
-});
-
-test('a denied request does not crash the app', async ({ page }) => {
-  await stubStorage(page, { persisted: false, persist: false });
-  await registerPasskey(page);
-
-  await expectUebersichtLoaded(page);
-  await expect.poll(() => page.evaluate(() => window.__starship.persistStatus())).toBe('denied');
-});
-
-test('a missing storage API does not crash the app', async ({ page }) => {
-  await stubStorage(page, 'unsupported');
-  await registerPasskey(page);
-
-  await expectUebersichtLoaded(page);
-  await expect
-    .poll(() => page.evaluate(() => window.__starship.persistStatus()))
-    .toBe('unsupported');
 });

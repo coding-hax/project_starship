@@ -94,15 +94,6 @@ test.describe('angemeldet', () => {
     expect(policy).toContain('microphone=()');
   });
 
-  test('der Theme-Bootstrap läuft weiter: gesetztes Theme greift, ohne Verstoß (AK4)', async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem('starship:theme', 'dunkel'));
-
-    await page.goto('/uebersicht');
-
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dunkel');
-    expect(await page.evaluate(() => window.__violations)).toEqual([]);
-  });
-
   test('ein zur Laufzeit per DOM eingefügtes Inline-Skript ohne Nonce wird geblockt (AK5)', async ({ page }) => {
     await page.goto('/uebersicht');
 

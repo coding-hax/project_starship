@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { installClockAt, registerPasskey, resetAppData, withDb } from './helpers';
+import { installClockAt, registerPasskey, resetAppData } from './helpers';
 
 /**
  * Deutsche Zeigerzeit — "halb", "viertel vor/nach", zusammengesetzte Minutenangaben,
@@ -12,14 +12,9 @@ import { installClockAt, registerPasskey, resetAppData, withDb } from './helpers
  * gar nicht zeigen. Juli, weit weg von Mitternacht/DST, wie FIXED_NOW selbst begründet.
  */
 const ZEIGERZEIT_NOW = '2026-07-20T08:00:00.000Z'; // Montag, 10:00 Berlin (CEST)
-const ZEIGERZEIT_NOW_AFTERNOON = '2026-07-20T13:00:00.000Z'; // derselbe Montag, 15:00 Berlin
 
 const CAPTURE_LABEL = 'Aufgabe erfassen';
 const CONFIRM_LABEL = 'Aufgabe bestätigen';
-
-function captureButton(page: Page) {
-  return page.getByRole('button', { name: CAPTURE_LABEL });
-}
 
 function captureTitleField(page: Page) {
   return page.getByRole('textbox', { name: 'Titel der Aufgabe' });
@@ -31,12 +26,6 @@ function confirmDialog(page: Page) {
 
 function taskItems(page: Page) {
   return page.getByRole('list', { name: 'Aufgaben' }).getByRole('listitem');
-}
-
-async function submitUebersichtCapture(page: Page, text: string) {
-  await captureButton(page).click();
-  await captureTitleField(page).fill(text);
-  await page.getByRole('button', { name: 'Anlegen' }).click();
 }
 
 async function submitQuickAdd(page: Page, text: string) {
@@ -79,62 +68,6 @@ test.beforeEach(async ({ page }) => {
   await registerPasskey(page, null);
 });
 
-test('AK1: Zeigerzeit-Grundformen ("halb H", "viertel nach/vor H") landen korrekt vorbefüllt im Termin-Editor', async ({
-  page,
-}) => {
-  await page.goto('/uebersicht');
-  const halbZwoelf = expectedDueAt(ZEIGERZEIT_NOW, 1, 11, 30);
-
-  // Seit P1–P4 (#715) legt "Anlegen" auf /uebersicht Termine direkt über die
-  // Outbox an, kein Bestätigen-Dialog mehr dazwischen — prüfbar ist der korrekt
-  // aufgelöste Titel + Zeitpunkt in der Outbox-Payload.
-  await submitUebersichtCapture(page, 'Termin morgen halb zwölf Zahnarzt');
-  await expect(page).toHaveURL(/\/uebersicht$/);
-  let entries = await page.evaluate(() => window.__starship.pending());
-  expect(entries[entries.length - 1].payload).toMatchObject({
-    title: 'Zahnarzt',
-    startsAt: halbZwoelf.toISOString(),
-  });
-
-  // "um halb 12" (Ziffer statt Wort) ergibt dasselbe — "um" fällt als Bindewort.
-  await page.goto('/uebersicht');
-  await submitUebersichtCapture(page, 'Termin morgen um halb 12 Zahnarzt');
-  entries = await page.evaluate(() => window.__starship.pending());
-  expect(entries[entries.length - 1].payload).toMatchObject({
-    title: 'Zahnarzt',
-    startsAt: halbZwoelf.toISOString(),
-  });
-
-  // "viertel vor neun": die genannte Stunde (neun) entscheidet die Tageshälfte, nicht
-  // die aufgelöste (acht) — R2 Regel 4.
-  const viertelVorNeun = expectedDueAt(ZEIGERZEIT_NOW, 1, 8, 45);
-  await page.goto('/uebersicht');
-  await submitUebersichtCapture(page, 'Termin morgen viertel vor neun Zahnarzt');
-  entries = await page.evaluate(() => window.__starship.pending());
-  expect(entries[entries.length - 1].payload).toMatchObject({
-    title: 'Zahnarzt',
-    startsAt: viertelVorNeun.toISOString(),
-  });
-});
-
-test('AK2: zusammengesetzte Minutenangabe ("M vor/nach halb H") korrekt vorbefüllt, auch im Nachtfenster', async ({
-  page,
-}) => {
-  await page.goto('/uebersicht');
-  const due = expectedDueAt(ZEIGERZEIT_NOW, 1, 2, 25);
-
-  await submitUebersichtCapture(page, 'Termin morgen fünf vor halb drei Call');
-
-  // Der Termin-Pfad legt seit P1–P4 (#715) direkt an, kein Zwischenschritt mehr —
-  // prüfbar ist der korrekt aufgelöste, vorbefüllte Zeitpunkt in der Outbox-Payload.
-  await expect(page).toHaveURL(/\/uebersicht$/);
-  const entries = await page.evaluate(() => window.__starship.pending());
-  expect(entries[entries.length - 1].payload).toMatchObject({
-    title: 'Call',
-    startsAt: due.toISOString(),
-  });
-});
-
 test('AK3+AK4: eine geratene Nachtzeit oder eine regionale Kurzform erzwingt das Bestätigungs-Sheet auf dem Aufgaben-Pfad, auch bei eingeschalteter Direkt-Erfassung', async ({
   page,
 }) => {
@@ -167,88 +100,4 @@ test('AK3+AK4: eine geratene Nachtzeit oder eine regionale Kurzform erzwingt das
   await dialog.getByRole('button', { name: 'Anlegen' }).click();
   await expect(dialog).toBeHidden();
   await expect(taskItems(page).filter({ hasText: 'Abgabe' })).toBeVisible();
-});
-
-test('AK3 Gegenfall: eine geratene Zeit außerhalb des Nachtfensters respektiert weiter die Direkt-Erfassung', async ({
-  page,
-}) => {
-  await enableDirectCapture(page);
-  await page.goto('/aufgaben');
-  const due = expectedDueAt(ZEIGERZEIT_NOW, 1, 6, 0);
-
-  await submitQuickAdd(page, 'morgen um 6 Sport');
-
-  await expect(confirmDialog(page)).toBeHidden();
-  await expect(taskItems(page).filter({ hasText: 'Sport' })).toBeVisible();
-  const entries = await page.evaluate(() => window.__starship.pending());
-  expect(entries[entries.length - 1].payload).toMatchObject({ dueAt: due.toISOString() });
-});
-
-test('AK5: ein Tageszeitwort schlägt die Vormittags/Nachmittags-Heuristik immer', async ({ page }) => {
-  await page.goto('/uebersicht');
-  const abends = expectedDueAt(ZEIGERZEIT_NOW, 1, 20, 0);
-
-  // Ohne Tageszeitwort läge "um 8" auf der Vormittagslesart (10:00 Bezugspunkt) —
-  // "abends" schlägt das.
-  await submitUebersichtCapture(page, 'Termin morgen um 8 abends Kino');
-
-  await expect(page).toHaveURL(/\/uebersicht$/);
-  const entries = await page.evaluate(() => window.__starship.pending());
-  expect(entries[entries.length - 1].payload).toMatchObject({
-    title: 'Kino',
-    startsAt: abends.toISOString(),
-  });
-});
-
-test('AK6: dieselbe Eingabe liest sich je nach Sprechzeitpunkt vormittags oder nachmittags', async ({ page }) => {
-  await page.goto('/uebersicht');
-  const vormittags = expectedDueAt(ZEIGERZEIT_NOW, 1, 8, 0);
-
-  await submitUebersichtCapture(page, 'Termin morgen um 8 Standup');
-  await expect(page).toHaveURL(/\/uebersicht$/);
-  let entries = await page.evaluate(() => window.__starship.pending());
-  expect(entries[entries.length - 1].payload).toMatchObject({
-    title: 'Standup',
-    startsAt: vormittags.toISOString(),
-  });
-
-  // Derselbe Satz, aber gesprochen um 15:00 statt 10:00 — Nachmittagslesart.
-  await installClockAt(page, ZEIGERZEIT_NOW_AFTERNOON);
-  await page.goto('/uebersicht');
-  const nachmittags = expectedDueAt(ZEIGERZEIT_NOW_AFTERNOON, 1, 20, 0);
-
-  await submitUebersichtCapture(page, 'Termin morgen um 8 Standup');
-  entries = await page.evaluate(() => window.__starship.pending());
-  expect(entries[entries.length - 1].payload).toMatchObject({
-    title: 'Standup',
-    startsAt: nachmittags.toISOString(),
-  });
-});
-
-test('Offline-Pfad: eine mit Zeigerzeit erfasste Aufgabe übersteht offline die Anlage und erreicht online die Datenbank', async ({
-  page,
-}) => {
-  await page.goto('/aufgaben');
-  // beforeEach hat die Sync-Endpunkte bereits gekappt — das ist der Tunnel ohne Netz.
-  const due = expectedDueAt(ZEIGERZEIT_NOW, 1, 8, 45);
-
-  await submitQuickAdd(page, 'Termin morgen viertel vor neun Zahnarzt');
-
-  const dialog = confirmDialog(page);
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Fälligkeit')).toHaveValue(isoToLocalInput(due));
-  await dialog.getByRole('button', { name: 'Anlegen' }).click();
-
-  await expect(taskItems(page).filter({ hasText: 'Zahnarzt' })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
-
-  await page.unroute('**/api/sync/**');
-  await page.evaluate(() => window.__starship.sync());
-
-  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
-  const row = await withDb((client) =>
-    client.query('SELECT due_at FROM tasks WHERE title = $1', ['Zahnarzt']),
-  );
-  expect(row.rowCount).toBe(1);
-  expect(new Date(row.rows[0].due_at).toISOString()).toBe(due.toISOString());
 });

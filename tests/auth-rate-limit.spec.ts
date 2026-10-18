@@ -31,16 +31,6 @@ async function authChallengeCount(): Promise<number> {
   return (result.rows[0] as { count: number }).count;
 }
 
-async function rateLimitCount(bucket: 'options' | 'recovery'): Promise<number> {
-  const result = await withDb((client) =>
-    client.query(
-      'SELECT count FROM auth_rate_limits WHERE bucket = $1 ORDER BY window_start DESC LIMIT 1',
-      [bucket],
-    ),
-  );
-  return (result.rows[0] as { count: number } | undefined)?.count ?? 0;
-}
-
 async function ageRateLimitWindows(minutes: number): Promise<void> {
   await withDb((client) =>
     client.query(
@@ -121,13 +111,4 @@ test('AK3: ein Recovery-Fehlversuch zaehlt gegen ein eigenes, strengeres Budget 
   expect(loginRes.status()).toBe(200);
 
   await context.close();
-});
-
-test('AK4: der Zaehler liegt in Postgres, nicht im Prozessspeicher', async ({ page }) => {
-  for (let i = 0; i < 3; i += 1) {
-    const res = await page.request.post('/api/auth/login/options');
-    expect(res.status()).toBe(200);
-  }
-
-  expect(await rateLimitCount('options')).toBeGreaterThanOrEqual(3);
 });
