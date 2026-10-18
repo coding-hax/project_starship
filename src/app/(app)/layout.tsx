@@ -1,6 +1,7 @@
 import { JournalHabitBoot } from '@/features/journal/journal-habit-boot';
 import { CategoryColorsBoot } from '@/features/settings/category-colors-boot';
 import { AppHeader } from '@/ui/app-header';
+import { BlockedNotice } from '@/ui/blocked-notice';
 import { E2EBridge } from '@/ui/e2e-bridge';
 import { ModuleRouteGuard } from '@/ui/module-route-guard';
 import { Nav } from '@/ui/nav';
@@ -22,6 +23,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <AppHeader />
       <Nav />
       <main className="shell__main">
+        {/* Inside the scrolling content, not a `.shell` grid sibling (AK5, #1201) —
+            `OfflineNotice`'s shape is a normal block, not `position: fixed` like
+            `Toast`, so it needs the page's own flow to be visible at all. */}
+        <BlockedNotice />
         <PageTransition>{children}</PageTransition>
       </main>
       <SyncBoot />

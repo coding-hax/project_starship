@@ -707,7 +707,7 @@ test.describe('#857: Sitzungen an einer Stelle, deutbare Zahl (destruktiv, frisc
     await contextA.close();
   });
 
-  test('AK5: offline sind „App sperren" und „Alle anderen Sitzungen beenden" inaktiv mit Hinweis', async ({
+  test('AK5: offline bleibt nur „Alle anderen Sitzungen beenden" inaktiv — „App sperren" sperrt weiterhin lokal (#1201 AK7)', async ({
     browser,
     baseURL,
   }) => {
@@ -721,7 +721,7 @@ test.describe('#857: Sitzungen an einer Stelle, deutbare Zahl (destruktiv, frisc
     await expect(
       sessionPanel.locator('.session-panel__hint', { hasText: 'Geht nur online.' }),
     ).toBeVisible();
-    await expect(sessionPanel.getByRole('button', { name: 'App sperren' })).toBeDisabled();
+    await expect(sessionPanel.getByRole('button', { name: 'App sperren' })).toBeEnabled();
     await expect(sessionPanel.getByRole('button', { name: 'Beenden' })).toBeDisabled();
 
     await context.setOffline(false);

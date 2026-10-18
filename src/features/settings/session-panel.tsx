@@ -5,6 +5,8 @@ import { Row } from '@/ui/row';
 import { SectionCard } from '@/ui/section-card';
 import { useOnline } from '@/ui/use-online';
 import { journalLock } from '@/features/journal/lock-store';
+import { wipeLocalDatabase } from '@/local/account-isolation';
+import { sync } from '@/local/sync';
 import { useSessions } from './use-sessions';
 import './session-panel.css';
 
@@ -17,27 +19,35 @@ export function SessionPanel() {
 
   async function lock() {
     setLockBusy(true);
-    const response = await fetch('/api/auth/logout', { method: 'POST' });
-    if (!response.ok) {
-      setLockBusy(false);
-      return;
-    }
+    // A last chance for the outbox to reach the server before the wipe below
+    // discards it unread — locking the device is not the same as abandoning
+    // unsynced work. Best-effort: offline, this just fails fast and falls
+    // through to the wipe regardless (AK7, #1201), same as it always did.
+    await sync().catch(() => {});
+    // Local and network-independent (AK7, #1201) — the wipe must not wait on a
+    // request that may never complete offline. The server-side session destroy
+    // is best-effort too: it either lands now, or the session simply expires
+    // later, same as any other stale cookie (sync.ts's own 401 path wipes again).
+    await wipeLocalDatabase();
     await journalLock();
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Offline — the redirect below still happens, that is the whole point.
+    }
     window.location.assign('/anmelden');
   }
 
   return (
     <SectionCard title="Sitzung" className="session-panel">
-      {!online && <p className="session-panel__hint">Sperren geht nur online.</p>}
+      {/* "App sperren" braucht seit #1201 kein Netz mehr (AK7) — nur noch das
+          Beenden fremder Sitzungen ist ein reiner Server-Aufruf. */}
+      {!online && (
+        <p className="session-panel__hint">Alle anderen Sitzungen beenden geht nur online.</p>
+      )}
       {endError && <p className="session-panel__error">{endError}</p>}
 
-      {!online ? (
-        <Row label="App sperren">
-          <button type="button" className="session-panel__button" disabled>
-            App sperren
-          </button>
-        </Row>
-      ) : confirmingLock ? (
+      {confirmingLock ? (
         <Row label="Wirklich sperren?">
           <div className="session-panel__confirm">
             <button

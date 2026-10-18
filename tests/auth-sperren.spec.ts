@@ -63,6 +63,13 @@ async function lock(page: Page) {
   await page.waitForURL('**/anmelden');
 }
 
+/** Mirrors the same-named helper in konto-isolation.spec.ts — see its doc comment. */
+async function stubAnmeldenForOfflineRedirect(page: Page): Promise<void> {
+  await page.route('**/anmelden', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>anmelden</title>' }),
+  );
+}
+
 test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
   test('AC1: Gruppe "Gerät" zeigt die Karte "Sitzung" mit Knopf "App sperren"', async ({
     page,
@@ -95,15 +102,25 @@ test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
     expect(logoutCalls).toBe(0);
   });
 
-  test('AC6: offline ist der Knopf inaktiv mit Hinweis, dass Sperren nur online geht', async ({
+  test('AC6: offline sperrt der Knopf trotzdem lokal und leitet auf /anmelden (#1201 AK7)', async ({
     page,
     context,
   }) => {
     await registerPasskey(page, '/einstellungen');
+    // Lässt den Redirect auf /anmelden offline tatsächlich landen — der Dev-Server
+    // liefert nie einen Service Worker (next.config.ts: `disable: NODE_ENV ===
+    // 'development'`, siehe offline-critical.spec.ts), eine echte Offline-
+    // Navigation zu einer in diesem Context nie besuchten Route scheitert sonst
+    // mit ERR_INTERNET_DISCONNECTED — eine Dev-Mode-e2e-Lücke, keine Produktlücke
+    // (jedes echte Konto war für die Anmeldung schon mindestens einmal dort).
+    await stubAnmeldenForOfflineRedirect(page);
     await context.setOffline(true);
 
-    await expect(page.getByRole('button', { name: 'App sperren' })).toBeDisabled();
-    await expect(page.getByText('Sperren geht nur online.')).toBeVisible();
+    // Der lokale Wipe braucht kein Netz mehr (#1201 AK7) — nur der Best-Effort-
+    // Logout-Request bleibt offline erfolglos, die geteilte Sitzung überlebt das
+    // (sie ist das, was diese Testgruppe "sicher" macht).
+    await expect(page.getByRole('button', { name: 'App sperren' })).toBeEnabled();
+    await lock(page);
 
     await context.setOffline(false);
   });

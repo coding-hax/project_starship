@@ -37,8 +37,18 @@ vi.mock('./dexie', () => ({
   META_LAST_PULLED_SEQ: 'lastPulledSeq',
 }));
 
+const ensureAccountCheckedMock = vi.fn();
+const markBlockedMock = vi.fn();
+const wipeLocalDatabaseMock = vi.fn();
+
+vi.mock('./account-isolation', () => ({
+  ensureAccountChecked: () => ensureAccountCheckedMock(),
+  markBlocked: () => markBlockedMock(),
+  wipeLocalDatabase: () => wipeLocalDatabaseMock(),
+}));
+
 import { cursorAfterSkips } from './conflict';
-import { pull, push, setUnauthorizedHandler } from './sync';
+import { pull, push, setUnauthorizedHandler, sync } from './sync';
 
 function outboxEntry(overrides: Partial<OutboxEntry> = {}): OutboxEntry {
   return {
@@ -86,6 +96,9 @@ beforeEach(() => {
   recordsGetMock.mockReset().mockResolvedValue(undefined);
   recordsPutMock.mockReset();
   outboxToArrayMock.mockReset().mockResolvedValue([]);
+  ensureAccountCheckedMock.mockReset().mockResolvedValue('ready');
+  markBlockedMock.mockReset();
+  wipeLocalDatabaseMock.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -170,7 +183,7 @@ describe('pull', () => {
     expect(setMetaMock).not.toHaveBeenCalled();
   });
 
-  it('calls the unauthorized handler and stops on a 401, without touching the cursor', async () => {
+  it('wipes the local database and calls the unauthorized handler on a 401, without touching the cursor (AK6)', async () => {
     const handler = vi.fn();
     setUnauthorizedHandler(handler);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 401)));
@@ -178,6 +191,7 @@ describe('pull', () => {
     const result = await pull();
 
     expect(result).toEqual({ appliedAny: false, complete: false });
+    expect(wipeLocalDatabaseMock).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledTimes(1);
     expect(setMetaMock).not.toHaveBeenCalled();
   });
@@ -186,6 +200,28 @@ describe('pull', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 401)));
 
     await expect(pull()).resolves.toEqual({ appliedAny: false, complete: false });
+  });
+
+  it('marks the account blocked and stops on a 403, without wiping or touching the cursor (AK5)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 403)));
+
+    const result = await pull();
+
+    expect(result).toEqual({ appliedAny: false, complete: false });
+    expect(markBlockedMock).toHaveBeenCalledTimes(1);
+    expect(wipeLocalDatabaseMock).not.toHaveBeenCalled();
+    expect(setMetaMock).not.toHaveBeenCalled();
+  });
+
+  it('never fetches when the account check is not ready', async () => {
+    ensureAccountCheckedMock.mockResolvedValue('blocked');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await pull();
+
+    expect(result).toEqual({ appliedAny: false, complete: false });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   /** `since` grows across pages like production does (read from `getMeta`, written via
@@ -343,7 +379,7 @@ describe('push', () => {
     expect(discardStaleMock).not.toHaveBeenCalled();
   });
 
-  it('calls the unauthorized handler on a 401 instead of marking the queue failed', async () => {
+  it('wipes the local database and calls the unauthorized handler on a 401 instead of marking the queue failed (AK6)', async () => {
     const handler = vi.fn();
     setUnauthorizedHandler(handler);
     pendingMock.mockResolvedValue([outboxEntry({ id: 'm1' })]);
@@ -351,7 +387,19 @@ describe('push', () => {
 
     await push();
 
+    expect(wipeLocalDatabaseMock).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledTimes(1);
+    expect(markFailedMock).not.toHaveBeenCalled();
+  });
+
+  it('marks the account blocked on a 403 instead of marking the queue failed (AK5)', async () => {
+    pendingMock.mockResolvedValue([outboxEntry({ id: 'm1' })]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 403)));
+
+    await push();
+
+    expect(markBlockedMock).toHaveBeenCalledTimes(1);
+    expect(wipeLocalDatabaseMock).not.toHaveBeenCalled();
     expect(markFailedMock).not.toHaveBeenCalled();
   });
 
@@ -365,5 +413,30 @@ describe('push', () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
+describe('sync', () => {
+  it('neither pushes nor pulls when the account check is not ready (#1201)', async () => {
+    ensureAccountCheckedMock.mockResolvedValue('blocked');
+    pendingMock.mockResolvedValue([outboxEntry({ id: 'm1' })]);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await sync();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('pushes and pulls once the account check is ready', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(pullResponse({ changes: [], cursor: 0, hasMore: false }))),
+    );
+
+    await sync();
+
+    expect(ensureAccountCheckedMock).toHaveBeenCalled();
+    expect(setMetaMock).toHaveBeenCalledWith('lastPulledSeq', 0);
   });
 });
