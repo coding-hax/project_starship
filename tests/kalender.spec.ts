@@ -551,6 +551,22 @@ test('ein ausgefallenes Vorkommen verschwindet nur an diesem Tag aus der Timelin
   // (nicht Ziehen — #784) zur naechsten Woche.
   await selectStripDay(page, 'Sa, 25.');
   await expect(eventCard(page, 'Yoga')).toBeVisible();
+
+  // "Nur dieser" schreibt in `event_exceptions`, nicht `events` — der einzige
+  // Schreibweg in diese Tabelle. Beleg, dass die Ausnahme online ankommt.
+  await page.unroute('**/api/sync/**');
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+
+  const row = await withDb((client) =>
+    client.query(
+      `SELECT ee.cancelled FROM event_exceptions ee
+       JOIN events e ON e.id = ee.event_id
+       WHERE e.title = $1`,
+      ['Yoga'],
+    ),
+  );
+  expect(row.rows[0].cancelled).toBe(true);
 });
 
 test('„alle folgenden" aendert dieses und alle spaeteren Vorkommen, keine frueheren (AC5)', async ({
