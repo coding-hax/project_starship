@@ -1,7 +1,9 @@
+import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   bigint,
   boolean,
+  check,
   date,
   foreignKey,
   index,
@@ -492,6 +494,52 @@ export const adminAudit = pgTable(
 
 export type AdminAudit = typeof adminAudit.$inferSelect;
 export type NewAdminAudit = typeof adminAudit.$inferInsert;
+
+/**
+ * One row per 5-minute window in which some source kept the Neon compute awake
+ * (#1233) — server infrastructure like `sessions`/`user_activity_days` above: no
+ * `syncColumns`, no `SYNC_REGISTRY` entry, no Dexie counterpart;
+ * `check-tenant-isolation.sh` only scans tables that spread `syncColumns`, so
+ * this one sits structurally outside its reach.
+ *
+ * A row is **either** an account's window (`user_id` set, `system_source` null)
+ * **or** a system source's window (`system_source` set, `user_id` null) — never
+ * both, never neither. The CHECK makes that structural instead of conventional.
+ * `user_id` cascades on account deletion (AK1), the same reasoning as
+ * `user_activity_days`; `system_source` has nothing to cascade from.
+ *
+ * No surrogate `id`: the two **partial** unique indexes below are each the
+ * `ON CONFLICT DO NOTHING` upsert target for their own row kind, and each sits
+ * over columns the CHECK already guarantees are non-null on that side — so
+ * there is no "NULLs are distinct" ambiguity to worry about, unlike a single
+ * `(source, window_start)` key spanning both kinds would have. A plain
+ * `pgTable` with no primary key at all is fine in Postgres; nothing here is
+ * ever updated or looked up by a synthetic id.
+ */
+export const userActivityWindows = pgTable(
+  'user_activity_windows',
+  {
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    systemSource: text('system_source').$type<'cron' | 'deploy-probe'>(),
+    windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    check(
+      'user_activity_windows_account_xor_system',
+      sql`(${table.userId} is null) <> (${table.systemSource} is null)`,
+    ),
+    uniqueIndex('user_activity_windows_account_window_idx')
+      .on(table.userId, table.windowStart)
+      .where(sql`${table.systemSource} is null`),
+    uniqueIndex('user_activity_windows_system_window_idx')
+      .on(table.systemSource, table.windowStart)
+      .where(sql`${table.userId} is null`),
+    index('user_activity_windows_window_start_idx').on(table.windowStart),
+  ],
+);
+
+export type UserActivityWindow = typeof userActivityWindows.$inferSelect;
+export type NewUserActivityWindow = typeof userActivityWindows.$inferInsert;
 
 /**
  * WebAuthn challenges. Kept server-side rather than in a cookie so a replay cannot
