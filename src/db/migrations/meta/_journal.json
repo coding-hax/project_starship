@@ -204,6 +204,13 @@
       "when": 1792406804209,
       "tag": "0028_real_the_order",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792412995184,
+      "tag": "0029_hot_annihilus",
+      "breakpoints": true
     }
   ]
 }

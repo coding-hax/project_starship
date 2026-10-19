@@ -9,6 +9,14 @@ const PROTECTED_PREFIXES = [
   '/journal',
   '/einstellungen',
   '/wetter',
+  // `/admin` and `/api/admin/*` are the one deliberate exception to "`/api/*`
+  // never redirects" below (S4, #1203 AK1): an unauthenticated request to either
+  // must land on /anmelden like a page, not answer with a bare 401 JSON body
+  // like every other API route does. The role check (-> 404 for a signed-in
+  // non-admin) happens one layer down, in `requireAdmin()` — this edge runtime
+  // has no DB access to decide that itself.
+  '/admin',
+  '/api/admin',
 ];
 
 function isProtected(pathname: string): boolean {
@@ -47,7 +55,8 @@ function buildCsp(nonce: string): string {
  * Auth check: cookie presence only, no DB access — this runs in the Edge runtime,
  * which session.ts cannot (next/headers cookies() aside, it also pulls drizzle and
  * node:crypto). The real check stays at the data layer: every `/api/sync/*` route
- * calls requireUser() against Postgres. `/anmelden`, `/` and `/api/*` never redirect.
+ * calls requireUser() against Postgres. `/anmelden`, `/` and `/api/*` never
+ * redirect — except `/api/admin/*`, see `PROTECTED_PREFIXES` above (AK1).
  *
  * CSP (production only, issue #753): dev needs 'unsafe-eval' for HMR and none of the
  * `mobile` project's specs expect a CSP, so the header is skipped there entirely

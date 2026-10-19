@@ -11,6 +11,7 @@
 - `shipped.prod.spec.ts` / `smoke.prod.spec.ts` / `playwright.shipped.config.ts` — Rauchtest gegen Bündel; Post-Deploy-Rauchtest
 - `auth-{geraete,sperren,recovery-register}.spec.ts` / `auth-{verify,rate-limit}.spec.ts` — Passkeys/Sitzungen, Sperren, Recovery; Verify-Fehler, Rate-Limit
 - `einladung.spec.ts` — Einladungs-Token: Hash, Einlösen, Einmaligkeit, Bootstrap-Admin
+- `admin-uebersicht.spec.ts` — Admin-Zugang (404/Anmelden), Kennzahlen je Konto, kein Nutzerinhalt
 - `push.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` / `schema.spec.ts` — Push-Abo; Reminder-Versand; Reminder-Panel; Schema-Exaktheit
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `uebersicht-{ladezustand,begruessung}.spec.ts` — Aufgaben-Schreibwege, Filter; Übersicht: Woche, nächster Termin, Laden
 - `capture.spec.ts` / `capture-{uebersicht,router,routine-neu}.spec.ts` / `capture-{art,wiederholung,zeigerzeit}.spec.ts` — Freitext → Aufgabe/Termin/Routine, Bestätigung

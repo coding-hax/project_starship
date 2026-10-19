@@ -1,0 +1,104 @@
+.admin-overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Der Spalten-Gap übernimmt den Kartenabstand — section-card.css's eigener
+   margin-bottom addierte sich sonst dazu (gleiches Muster wie
+   einstellungen.css .einstellungen__group-items). */
+.admin-overview > .section-card {
+  margin-bottom: 0;
+}
+
+.admin-overview__hint {
+  margin: 0;
+  padding: var(--space-2) 0;
+  color: var(--text-muted);
+  font-size: var(--text-secondary);
+}
+
+.admin-overview__accounts,
+.admin-overview__invites,
+.admin-overview__modules {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.admin-overview__account {
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.admin-overview__account:last-child {
+  border-bottom: none;
+}
+
+.admin-overview__account-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-block-end: var(--space-1);
+}
+
+/* Nur das Status-Badge trägt die Betonung dieser Zeile (eine Betonung je
+   Fläche, docs/DESIGN_SYSTEM.md) — das Etikett bleibt normalgewichtig. */
+.admin-overview__status {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-secondary);
+  font-weight: var(--weight-emphasis);
+  white-space: nowrap;
+}
+
+.admin-overview__status[data-status='aktiv'] {
+  background: color-mix(in oklab, var(--success) 20%, transparent);
+  color: var(--success);
+}
+
+.admin-overview__status[data-status='eingeladen'] {
+  background: color-mix(in oklab, var(--warning) 20%, transparent);
+  color: var(--warning);
+}
+
+.admin-overview__status[data-status='gesperrt'] {
+  background: color-mix(in oklab, var(--danger) 20%, transparent);
+  color: var(--danger);
+}
+
+.admin-overview__account .row {
+  padding-block: var(--space-1);
+}
+
+.admin-overview__modules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border-faint);
+}
+
+.admin-overview__module {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-secondary);
+  color: var(--text-muted);
+}
+
+.admin-overview__invite {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.admin-overview__invite:last-child {
+  border-bottom: none;
+}

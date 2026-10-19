@@ -424,6 +424,32 @@ export type Invite = typeof invites.$inferSelect;
 export type NewInvite = typeof invites.$inferInsert;
 
 /**
+ * One row per account per calendar day it was active (S4, #1203 AK3) — server
+ * infrastructure like `sessions`/`invites` above, not a row a client may push:
+ * `src/auth/activity.ts` is the only writer, from inside `requireUser()`. No
+ * `syncColumns`, no `SYNC_REGISTRY` entry, no Dexie counterpart —
+ * `check-tenant-isolation.sh` only scans tables that spread `syncColumns`, so
+ * this one sits structurally outside its reach, same reasoning as `invites`.
+ *
+ * `(user_id, day)` as the primary key *is* the AK3 uniqueness requirement and
+ * the `ON CONFLICT DO NOTHING` upsert target in one — no surrogate `id` column
+ * needed, the natural key is identity enough.
+ */
+export const userActivityDays = pgTable(
+  'user_activity_days',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: date('day').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] })],
+);
+
+export type UserActivityDay = typeof userActivityDays.$inferSelect;
+export type NewUserActivityDay = typeof userActivityDays.$inferInsert;
+
+/**
  * WebAuthn challenges. Kept server-side rather than in a cookie so a replay cannot
  * be mounted by handing the client its own challenge back.
  */
