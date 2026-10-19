@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { uuidv7 } from 'uuidv7';
 import { db } from '@/db';
 import { sessions, users } from '@/db/schema';
-import { recordActivity } from './activity';
+import { recordActivity, recordActivityWindow } from './activity';
 import { ensureDeviceId, healDeviceCookie } from './device-cookie';
 import { SESSION_COOKIE } from './session-cookie';
 
@@ -295,6 +295,9 @@ export async function requireUser(): Promise<SessionUser> {
   await healDeviceCookie(session.deviceId);
   await touchLastSeen(session.sessionId, session.lastSeenAt);
   await recordActivity(session.userId, session.userLastSeenAt);
+  // 5-minute Neon wake-time window (#1233 AK1) — independent of the hourly
+  // throttle above, and never throws on its own (AK2), so no guard is needed here.
+  await recordActivityWindow(session.userId);
 
   return session;
 }
