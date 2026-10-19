@@ -80,6 +80,15 @@ export async function POST(request: Request) {
 
   try {
     await db.transaction(async (tx) => {
+      if (!userId) {
+        // A fresh user-invite redemption — no pre-bound account, so this ceremony
+        // mints one (role 'user': the only way to become 'admin' is through
+        // `scripts/bootstrap-admin.ts`, AK6). Must happen before `burnInvite`
+        // below: that call points `invites.user_id` at `provisionalUserId`,
+        // which would violate the FK if the row didn't exist yet.
+        await tx.insert(users).values({ id: finalUserId, role: 'user' });
+      }
+
       if (inviteId) {
         // AK3: the one conditional UPDATE … RETURNING that makes the token
         // single-use under concurrency — two simultaneous ceremonies with the
@@ -88,13 +97,6 @@ export async function POST(request: Request) {
         const burned = await burnInvite(inviteId, provisionalUserId, tx);
         if (!burned) throw new InviteAlreadyUsedError();
         finalUserId = burned.userId;
-      }
-
-      if (!userId) {
-        // A fresh user-invite redemption — no pre-bound account, so this ceremony
-        // mints one (role 'user': the only way to become 'admin' is through
-        // `scripts/bootstrap-admin.ts`, AK6).
-        await tx.insert(users).values({ id: finalUserId, role: 'user' });
       }
 
       if (recoveryCodeId && !(await burnRecoveryCode(recoveryCodeId, tx))) {
