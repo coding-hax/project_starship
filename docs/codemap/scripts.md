@@ -10,13 +10,13 @@
 - `runner/{session,shim,cleanup,claim,fleet}.ts` — Session, Shim-Drift, Aufräumen, Multi-Slot
 - `check-{test-integrity,sync-invariants}.sh` — abgeschwächte Tests, API außerhalb der Outbox
 - `check-tenant-isolation.sh` — Mandanten-PK, requireUser je Route
-- `check-{dexie-bump,codemap}.sh` — Dexie-Bump-Hinweis, Wächter für diese Karten
+- `check-{dexie-bump,codemap}.sh` — Dexie-Bump-Hinweis, Karten-Wächter
 - `git-hooks/pre-push` / `tests/*.test.sh` — Slot-Claim-Guard; Bash-Fixture-Suiten
-- `claude-hooks/post-edit-checks.sh` — PostToolUse-Hook: die check-*.sh schon beim Editieren
-- `claude-hooks/pre-bash-guard.mjs` / `claude-hooks/stop-guard.sh` — sperrt --edit-last, Haupt-Checkout, pnpm i; Ende erst gepusht
-- `starship-runner` — Shim, den launchd/systemd startet
-- `bootstrap-github.sh` / `vercel-build.sh` / `smoke-decide.sh` — Setup, Migration, Post-Deploy-Smoke
-- `bootstrap-admin.ts` — einmaliger Admin + erster Einladungs-Link (`pnpm bootstrap-admin`)
+- `claude-hooks/post-edit-checks.sh` — PostToolUse-Hook: check-*.sh beim Editieren
+- `claude-hooks/pre-bash-guard.mjs` / `claude-hooks/stop-guard.sh` — sperrt --edit-last, Haupt-Checkout, pnpm i
+- `starship-runner` — Shim für launchd/systemd
+- `bootstrap-github.sh` / `vercel-build.sh` / `smoke-decide.sh` — Setup, Migration, Smoke
+- `bootstrap-admin.ts` — einmaliger Admin + erster Einladungs-Link
 - `{launchd,systemd}-setup.md` / `gen-slot-plists.sh` — Runner als Dienst je Slot
 
 ## .github/workflows/

@@ -1,6 +1,6 @@
 # Code-Karte: Routen & API (`src/app`)
 
-- `middleware.ts` — Auth-Gate vor (app): nur Cookie-Check, sonst → /anmelden
+- `middleware.ts` — Auth-Gate vor (app): Cookie-Check, sonst → /anmelden
 - `(app)/layout.tsx` — App-Shell, Modul-Route-Guard
 - `(app)/page-transition.tsx` — Opacity-Crossfade um Seiteninhalt
 - `(app)/uebersicht/page.tsx` — Dashboard: Zählpille, Einstellungs-Einstieg, Erfassungs-FAB, Modul-Sektionen
@@ -14,9 +14,9 @@
 - `anmelden/` / `offline/page.tsx` — Passkey: Anmelden/Recovery; SW-Fallback ohne Netz
 - `einladung/[token]/page.tsx` — Einladungs-Link einlösen: Passkey-Zeremonie für ein neues oder vorgebundenes Konto
 - `api/auth/` — WebAuthn (register/login/logout/status), Geräte-/Sitzungswiderruf
-- `api/admin/accounts/route.ts` — Kennzahlen je Konto (requireAdmin)
+- `api/admin/accounts/route.ts` — Kennzahlen je Konto, nie Nutzerinhalt (Admin)
 - `api/health/route.ts` — SELECT 1+Versions-SHA (offen)
-- `api/sync/` / `api/sync/pull/read-changes-since.ts` — push/pull (einziger Datenzugriff); seitenweiser Snapshot-Lesekern, Cursor-Konsistenz
+- `api/sync/` / `api/sync/pull/read-changes-since.ts` — push/pull (einziger Datenzugriff); Snapshot-Lesekern, Cursor-Konsistenz
 - `api/push/` — Abo (subscribe/unsubscribe/test) + Reminder-Versand, Bearer-Secret
 - `api/ics/` / `ssrf.ts` / `route.ts` — SSRF-Proxy für .ics-Feeds, Owner-geschützt
 - `layout.tsx` / `manifest.ts` / `globals.css` / `sw.ts` — Root-Layout, PWA-Manifest, Tokens; Service Worker (Push/Notification)
