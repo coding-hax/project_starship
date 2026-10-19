@@ -155,7 +155,7 @@ describe('roundPlan', () => {
     // Die meisten Faelle hier pruefen nicht, WELCHER Adapter getroffen wird --
     // derselbe reicht. #484: die eigene Gruppe unten prueft state/sharedState
     // bewusst getrennt.
-    return { gh, git, state, sharedState: state, claims, slotId: '1', clock: CLOCK };
+    return { gh, git, state, sharedState: state, claims, slotId: '1', clock: CLOCK, worktreeBase: '/worktrees' };
   }
 
   // isLead: true -- die meisten bestehenden Faelle testen das Verhalten VOR
@@ -489,7 +489,7 @@ describe('roundPlan', () => {
       expect(claims.readSlot(80)).toBe('1');
 
       const { gh: ghSlot2 } = ghDouble([openIssues(issueJson(80, ['plan'])), noOpenPrs]);
-      const ctxSlot2: RoundContext = { gh: ghSlot2, git: gitDouble(), state, sharedState: state, claims, slotId: '2', clock: CLOCK };
+      const ctxSlot2: RoundContext = { gh: ghSlot2, git: gitDouble(), state, sharedState: state, claims, slotId: '2', clock: CLOCK, worktreeBase: '/worktrees' };
       const result = roundPlan(ctxSlot2, opts);
 
       // 'done' ohne 🟠 heisst: kein zweiter `claude`-Aufruf fuer #80 -- waere
@@ -506,7 +506,7 @@ describe('roundPlan', () => {
       expect(claims.readSlot(81)).toBe('1');
 
       const { gh: ghSlot2 } = ghDouble([openIssues(issueJson(81, ['research'])), noOpenPrs]);
-      const ctxSlot2: RoundContext = { gh: ghSlot2, git: gitDouble(), state, sharedState: state, claims, slotId: '2', clock: CLOCK };
+      const ctxSlot2: RoundContext = { gh: ghSlot2, git: gitDouble(), state, sharedState: state, claims, slotId: '2', clock: CLOCK, worktreeBase: '/worktrees' };
       const result = roundPlan(ctxSlot2, opts);
 
       expect(result.kind).toBe('done');
@@ -1426,7 +1426,7 @@ describe('roundPlan', () => {
         labelsAre('ready', 'model:opus'),
       ]);
       const result = roundPlan(
-        { gh, git: gitDouble(), state, sharedState: sharedState2, claims, slotId: '1', clock: CLOCK },
+        { gh, git: gitDouble(), state, sharedState: sharedState2, claims, slotId: '1', clock: CLOCK, worktreeBase: '/worktrees' },
         opts,
       );
       expect(result.status?.text).toContain('Opus-Tagesbudget');
@@ -1438,7 +1438,7 @@ describe('roundPlan', () => {
       sharedState2.write('tier-96', 'opus');
       const { gh } = ghDouble([openIssues(issueJson(96, ['ready'])), noOpenPrs, labelsAre('ready')]);
       const run = roundPlan(
-        { gh, git: gitDouble(), state, sharedState: sharedState2, claims, slotId: '1', clock: CLOCK },
+        { gh, git: gitDouble(), state, sharedState: sharedState2, claims, slotId: '1', clock: CLOCK, worktreeBase: '/worktrees' },
         opts,
       ) as RoundRun;
       expect(run.model).toBe('opus');
@@ -1456,7 +1456,7 @@ describe('roundPlan', () => {
           labelsAre('ready', 'model:opus'),
         ]);
         const result = roundPlan(
-          { gh, git: gitDouble(), state: stateSlot2, sharedState: sharedState2, claims, slotId: '2', clock: CLOCK },
+          { gh, git: gitDouble(), state: stateSlot2, sharedState: sharedState2, claims, slotId: '2', clock: CLOCK, worktreeBase: '/worktrees' },
           opts,
         );
         expect(result.status?.text).toContain('Opus-Tagesbudget');
@@ -1464,6 +1464,68 @@ describe('roundPlan', () => {
       } finally {
         rmSync(stateSlot2Dir, { recursive: true, force: true });
       }
+    });
+  });
+
+  // #1226, AK4/AK6: der Slot idlet sichtbar bis zum naechsten erlaubten
+  // Versuch, haelt dabei aber den Claim UND 'in-progress' -- kein Agentenlauf,
+  // kein Wechsel auf ein anderes Ticket (derselbe Worktree, AK7).
+  describe('Warte-Gate fuer einen voruebergehenden API-Fehler (#1226)', () => {
+    const inProgressBuild = () => ghDouble([openIssues(issueJson(82, ['in-progress'])), noOpenPrs, labelsAre('in-progress')]);
+
+    it('AK4/AK6: haelt den Takt an, solange "transient-until" in der Zukunft liegt, und zeigt Versuch + needs-answer-Frist', () => {
+      const nowEpoch = Math.floor(CLOCK.now().getTime() / 1000);
+      state.write('transient-82', '2');
+      state.write('transient-first-82', String(nowEpoch - 20 * 60));
+      state.write('transient-until-82', String(nowEpoch + 10 * 60));
+      const { gh, calls } = inProgressBuild();
+      const result = roundPlan(ctx(gh), opts);
+      expect(result.kind).toBe('done');
+      expect(result.status?.emoji).toBe('🔵');
+      expect(result.status?.text).toContain('Versuch 2');
+      expect(result.status?.text).toContain('`needs-answer` erst ab');
+      // Die CI-Wache (gh pr list) laeuft nicht mehr -- der Gate greift VORHER.
+      expect(called(calls, 'pr', 'list')).toBe(false);
+    });
+
+    it('laesst den Takt normal weiterlaufen, sobald "transient-until" in der Vergangenheit liegt', () => {
+      const nowEpoch = Math.floor(CLOCK.now().getTime() / 1000);
+      state.write('transient-82', '1');
+      state.write('transient-until-82', String(nowEpoch - 1));
+      const { gh } = inProgressBuild();
+      const result = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(result.kind).toBe('run');
+      expect(result.issue).toBe(82);
+    });
+  });
+
+  // #1226, AK7: der Prompt eines fortgesetzten Bau-Laufs nennt die Dateien,
+  // die der abgebrochene Vorlauf nicht mehr committen konnte.
+  describe('Carry-over uncommitteter Aenderungen in den Bau-Prompt (#1226, AK7)', () => {
+    it('nennt die Dateien aus "git status --porcelain" im Vorlauf-Worktree im Prompt', () => {
+      const worktreeBase = '/tmp/wt-base';
+      const gitWithStatus: GitAdapter = {
+        run: vi.fn((args: string[], cwd?: string) => {
+          if (args[0] === 'status' && args[1] === '--porcelain' && cwd === join(worktreeBase, 'issue-82')) {
+            return ' M src/foo.ts\n?? src/bar.ts';
+          }
+          return '';
+        }),
+      };
+      const { gh } = ghDouble([openIssues(issueJson(82, ['in-progress'])), noOpenPrs, labelsAre('in-progress')]);
+      const result = roundPlan(
+        { gh, git: gitWithStatus, state, sharedState: state, claims, slotId: '1', clock: CLOCK, worktreeBase },
+        opts,
+      ) as RoundRun;
+      expect(result.prompt).toContain('Nicht committete Arbeit aus dem vorigen Lauf');
+      expect(result.prompt).toContain('M src/foo.ts');
+      expect(result.prompt).toContain('?? src/bar.ts');
+    });
+
+    it('bleibt beim frischen Prompt ohne Abschnitt, wenn der Worktree keine uncommittete Aenderung zeigt', () => {
+      const { gh } = ghDouble([openIssues(issueJson(82, ['in-progress'])), noOpenPrs, labelsAre('in-progress')]);
+      const result = roundPlan(ctx(gh), opts) as RoundRun;
+      expect(result.prompt).not.toContain('Nicht committete Arbeit aus dem vorigen Lauf');
     });
   });
 });
@@ -1509,7 +1571,7 @@ describe('roundEval', () => {
   const claims = createClaimAdapter(mkdtempSync(join(tmpdir(), 'round-eval-claims-')));
 
   function ctx(gh: GhAdapter, git: GitAdapter = gitDouble()): RoundContext {
-    return { gh, git, state, sharedState, claims, slotId: '1', clock: CLOCK };
+    return { gh, git, state, sharedState, claims, slotId: '1', clock: CLOCK, worktreeBase: '/worktrees' };
   }
 
   const ok = { rc: 0, out: '{"session_id":"sid-1","result":"ok"}', timedOut: false, maxRuntime: 2700 };
@@ -1763,7 +1825,7 @@ describe('roundEval', () => {
       const slotA = createStateAdapter(mkdtempSync(join(tmpdir(), 'slot-a-')));
       const slotB = createStateAdapter(mkdtempSync(join(tmpdir(), 'slot-b-')));
       const { gh } = ghDouble();
-      roundEval({ gh, git: gitDouble(), state: slotA, sharedState, claims, slotId: '1', clock: CLOCK }, plan, limited, '');
+      roundEval({ gh, git: gitDouble(), state: slotA, sharedState, claims, slotId: '1', clock: CLOCK, worktreeBase: '/worktrees' }, plan, limited, '');
       expect(slotA.read('limit-until')).toBeNull();
       expect(slotB.read('limit-until')).toBeNull();
       // Slot B liest denselben SHARED_DIR wie Slot A -- und sieht die Pause.
@@ -1902,13 +1964,13 @@ describe('roundEval', () => {
       const stateSlot2 = createStateAdapter(stateSlot2Dir);
       try {
         const { gh: gh1 } = ghDouble();
-        roundEval({ gh: gh1, git: gitDouble(), state, sharedState, claims, slotId: '1', clock: CLOCK }, plan, ok, '');
+        roundEval({ gh: gh1, git: gitDouble(), state, sharedState, claims, slotId: '1', clock: CLOCK, worktreeBase: '/worktrees' }, plan, ok, '');
         expect(state.read('session-77')).toBe('sid-1');
 
         const { gh: gh2 } = ghDouble();
         const okSlot2 = { rc: 0, out: '{"session_id":"sid-slot2","result":"ok"}', timedOut: false, maxRuntime: 2700 };
         roundEval(
-          { gh: gh2, git: gitDouble(), state: stateSlot2, sharedState, claims, slotId: '2', clock: CLOCK },
+          { gh: gh2, git: gitDouble(), state: stateSlot2, sharedState, claims, slotId: '2', clock: CLOCK, worktreeBase: '/worktrees' },
           plan,
           okSlot2,
           '',
@@ -1931,33 +1993,136 @@ describe('roundEval', () => {
     expect(called(calls, '--add-label', 'needs-answer')).toBe(false);
   });
 
-  describe('voruebergehender API-Fehler', () => {
-    const transient = { rc: 1, out: '{"api_error_status":503}', timedOut: false, maxRuntime: 2700 };
+  describe('voruebergehender API-Fehler (#1226)', () => {
+    const transient503 = { rc: 1, out: '{"api_error_status":503}', timedOut: false, maxRuntime: 2700 };
 
-    it('zaehlt hoch und wartet auf den naechsten Takt', () => {
+    function mutableClock(startIso: string) {
+      let current = new Date(startIso);
+      return {
+        now: () => current,
+        advance(seconds: number) {
+          current = new Date(current.getTime() + seconds * 1000);
+        },
+      };
+    }
+
+    it('AK1: der woertliche #1201-Fixture (is_error:true, "result" beginnt mit "API Error:", subtype success, kein api_error_status) gilt als voruebergehend, nicht als Absturz', () => {
+      const out = JSON.stringify({
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        num_turns: 28,
+        result: 'API Error: Connection closed mid-response. The response above may be incomplete.',
+      });
       const { gh, calls } = ghDouble();
-      const result = roundEval(ctx(gh), plan, transient, '');
-      expect(result.status?.text).toContain('Versuch 1 von 3');
+      const result = roundEval(ctx(gh), plan, { rc: 1, out, timedOut: false, maxRuntime: 2700 }, '');
+      expect(result.status?.emoji).toBe('🔵');
       expect(result.rc).toBe(0);
       expect(state.read('transient-77')).toBe('1');
       expect(called(calls, '--add-label', 'needs-answer')).toBe(false);
     });
 
-    it('eskaliert beim dritten Mal in Folge auf rot', () => {
-      state.write('transient-77', '2');
-      const { gh, calls } = ghDouble();
-      const result = roundEval(ctx(gh), plan, transient, '');
-      expect(result.status?.emoji).toBe('🔴');
-      expect(result.rc).toBe(1);
-      expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
-      expect(state.read('transient-77')).toBeNull();
+    it('AK1 (Absicherung): derselbe Fixture mit rc:0 rutscht trotzdem NICHT als Erfolg durch', () => {
+      const out = JSON.stringify({
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        result: 'API Error: Connection closed mid-response.',
+      });
+      const { gh } = ghDouble();
+      const result = roundEval(ctx(gh), plan, { rc: 0, out, timedOut: false, maxRuntime: 2700 }, '');
+      expect(result.status?.emoji).toBe('🔵');
+      expect(result.chain).toBe('stop');
+      expect(state.read('transient-77')).toBe('1');
     });
 
-    it('setzt den Zaehler nach einem sauberen Lauf zurueck', () => {
+    it('zaehlt hoch und wartet ohne Verzug auf den naechsten Takt (AK4: erster Neuversuch ohne Wartezeit)', () => {
+      const { gh, calls } = ghDouble();
+      const result = roundEval(ctx(gh), plan, transient503, '');
+      expect(result.status?.text).toContain('Versuch 1');
+      expect(result.status?.text).toContain('`needs-answer` erst ab');
+      expect(result.rc).toBe(0);
+      expect(state.read('transient-77')).toBe('1');
+      // Kein Verzug: 'transient-until' steht auf JETZT, nicht in der Zukunft.
+      expect(state.read('transient-until-77')).toBe(String(Math.floor(CLOCK.now().getTime() / 1000)));
+      expect(called(calls, '--add-label', 'needs-answer')).toBe(false);
+    });
+
+    it('AK4: ab dem zweiten Fehlschlag in Folge liegen genau 20 Minuten bis zum naechsten erlaubten Versuch', () => {
+      const { gh } = ghDouble();
+      state.write('transient-77', '1');
+      state.write('transient-first-77', String(Math.floor(CLOCK.now().getTime() / 1000)));
+      const result = roundEval(ctx(gh), plan, transient503, '');
+      expect(result.status?.text).toContain('Versuch 2');
+      const until = Number(state.read('transient-until-77'));
+      expect(until - Math.floor(CLOCK.now().getTime() / 1000)).toBe(20 * 60);
+    });
+
+    it('AK3: zaehlt NICHT als Eskalations-Fehlversuch -- kein failcount, kein "abgebrochen"-Kommentar, kein needs-answer', () => {
+      const { gh, calls } = ghDouble();
+      roundEval(ctx(gh), plan, transient503, '');
+      expect(sharedState.read('failcount-77')).toBeNull();
+      expect(called(calls, '--add-label', 'needs-answer')).toBe(false);
+      expect(calls.some((args) => args.includes('comment'))).toBe(false);
+    });
+
+    it('AK5: acht Stunden durchgehend gescheitert setzt needs-answer -- die Grenze ist die Zeitspanne, keine Versuchszahl', () => {
+      const clock = mutableClock('2026-07-26T09:00:00');
+      const localCtx = { gh: ghDouble().gh, git: gitDouble(), state, sharedState, claims, slotId: '1', clock, worktreeBase: '/worktrees' };
+
+      // Erster Fehlschlag setzt 'transient-first-77'.
+      roundEval(localCtx, plan, transient503, '');
+      expect(state.read('transient-first-77')).not.toBeNull();
+
+      // Weitere Fehlschlaege im 20-Minuten-Abstand, bis acht Stunden voll sind
+      // (24 weitere Versuche * 20 min = 8h) -- noch VOR der Grenze bleibt es blau.
+      for (let i = 0; i < 23; i++) {
+        clock.advance(20 * 60);
+        const r = roundEval(localCtx, plan, transient503, '');
+        expect(r.status?.emoji).toBe('🔵');
+      }
+      expect(state.read('transient-77')).toBe('24');
+
+      // Der naechste Fehlschlag liegt >= 8h nach dem ERSTEN Abbruch.
+      clock.advance(20 * 60);
+      const { gh: ghFinal, calls } = ghDouble();
+      const final = roundEval({ ...localCtx, gh: ghFinal }, plan, transient503, '');
+      expect(final.status?.emoji).toBe('🔴');
+      expect(final.rc).toBe(1);
+      expect(called(calls, '--add-label', 'needs-answer')).toBe(true);
+      const comment = calls.find((args) => args.includes('comment'))?.[4] ?? '';
+      expect(comment).toContain('25 Versuche');
+      expect(comment).toMatch(/rund 8 Stunden/);
+      expect(state.read('transient-77')).toBeNull();
+      expect(state.read('transient-first-77')).toBeNull();
+      expect(state.read('transient-until-77')).toBeNull();
+    });
+
+    it('AK5: ein erfolgreicher Lauf setzt die Zeitspanne zurueck', () => {
       state.write('transient-77', '2');
+      state.write('transient-first-77', '1');
+      state.write('transient-until-77', '1');
       const { gh } = ghDouble();
       roundEval(ctx(gh), plan, ok, '');
       expect(state.read('transient-77')).toBeNull();
+      expect(state.read('transient-first-77')).toBeNull();
+      expect(state.read('transient-until-77')).toBeNull();
+    });
+
+    it('AK5: ein inhaltlicher Fehlschlag (anderer Endgrund) setzt die Zeitspanne ebenfalls zurueck', () => {
+      state.write('transient-77', '2');
+      state.write('transient-first-77', '1');
+      state.write('transient-until-77', '1');
+      const { gh } = ghDouble();
+      roundEval(
+        ctx(gh),
+        plan,
+        { rc: 1, out: '{"subtype":"error_max_turns","is_error":true,"result":"ein richtiger Bug"}', timedOut: false, maxRuntime: 2700 },
+        '',
+      );
+      expect(state.read('transient-77')).toBeNull();
+      expect(state.read('transient-first-77')).toBeNull();
+      expect(state.read('transient-until-77')).toBeNull();
     });
   });
 
@@ -2024,7 +2189,7 @@ describe('roundEval', () => {
         { rc: 1, out: '', timedOut: false, maxRuntime: 2700 },
         'Error: overloaded_error',
       );
-      expect(result.status?.text).toContain('Versuch 1 von 3');
+      expect(result.status?.text).toContain('Versuch 1');
       expect(state.read('transient-77')).toBe('1');
     });
 

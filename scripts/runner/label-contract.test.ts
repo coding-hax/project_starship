@@ -170,7 +170,7 @@ describe('Ausschluss-Labels greifen auch auf dem Resume-Zweig in round.ts (#739 
   }
 
   function ctx(gh: GhAdapter): RoundContext {
-    return { gh, git: gitDouble, state, sharedState: state, claims, slotId: '1', clock: CLOCK };
+    return { gh, git: gitDouble, state, sharedState: state, claims, slotId: '1', clock: CLOCK, worktreeBase: '/worktrees' };
   }
 
   const issue = (number: number, labels: string[]): QueueIssue => ({

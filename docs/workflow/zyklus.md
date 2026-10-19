@@ -96,6 +96,29 @@ trägt seit #891 **kein** Label mehr — es ist ein Zustand der Flotte, nicht de
 Tickets, und der Flotten-Header trägt die Pause (siehe Abschnitt „Zwei Arten des
 Wartens" in `docs/workflow/labels.md`).
 
+**Ein vorübergehender API-Fehler (#1226) parkt ebenfalls nicht.** Bricht die
+CLI mitten in der Antwort ab (`is_error:true`, `result` beginnt mit
+`API Error:` — unabhängig von `subtype`/`api_error_status` — oder ein
+Statuscode 500/502/503/504/529 bzw. ein Textmuster wie „overloaded"/„timed
+out" **nur im CLI-eigenen Anteil der Ausgabe**, nie in der Antwort des
+Agenten, F17/#491), zählt das **nicht** als Eskalations-Fehlversuch
+(ADR-0007): kein Fehlzähler, kein 🔴-Kommentar, kein `needs-answer`. Der erste
+Neuversuch läuft ohne Wartezeit im nächsten Takt, ab dem zweiten Fehlschlag in
+Folge liegen höchstens 20 Minuten zwischen zwei Versuchen — mindestens drei
+Starts je Stunde. Das Ticket behält `in-progress` **und** seinen Claim, der
+Slot baut währenddessen **nichts anderes** (WIP = 1 pro Slot, ADR-0014;
+derselbe Worktree wird fortgesetzt). Der Status zeigt 🔵 „vorübergehender
+API-Fehler bei #N, neuer Versuch um HH:MM (Versuch k, `needs-answer` erst ab
+HH:MM)". Erst wenn seit dem **ersten** Abbruch der laufenden Serie acht
+Stunden lang jeder Versuch gescheitert ist (die Grenze ist eine Zeitspanne,
+keine Versuchszahl), setzt der Runner `needs-answer` mit einem Kommentar zu
+Anzahl, Zeitraum und letzter Fehlermeldung. Ein erfolgreicher Lauf oder ein
+anderer Endgrund (Limit, Notbremse, inhaltlicher Fehlschlag) setzt die Spanne
+zurück. Der fortsetzende Lauf läuft im selben Worktree; nennt der vorige
+Abbruch dabei uncommittete Änderungen (`git status --porcelain`), listet der
+Prompt sie als eigenen Abschnitt, damit der Agent dort ansetzt statt sie zu
+übersehen.
+
 **Recherche-Schritt vor `plan` (optional, Idee-Ebene):** Wirfst du eine grobe
 Feature-Idee als Issue ein, setzt du das Label `research`. Der Runner lässt
 Opus dann nur-lesend prüfen, *ob* & *was*: Fit zu `docs/VISION.md`,

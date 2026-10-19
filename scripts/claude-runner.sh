@@ -70,7 +70,11 @@ fi
 
 # Wurzel aller Ticket-Worktrees (#242) -- gitignored seit #226. Ein Bau-Lauf
 # bekommt darin sein eigenes Verzeichnis, statt im Haupt-Checkout zu bauen.
+# Export seit #1226: cli.ts (round-plan, AK7) liest denselben Pfad, um einen
+# abgebrochenen Bau-Lauf im richtigen Worktree nach uncommitteter Arbeit zu
+# fragen -- ohne Export saehe cli.ts nur seinen eigenen Default.
 WORKTREE_BASE="${WORKTREE_BASE:-$REPO_DIR/.claude/worktrees}"
+export WORKTREE_BASE
 # Liegt bewusst unter SHARED_DIR, nicht STATE_DIR: sonst rennt Slot 2 weiter in
 # 429er, während Slot 1 schon korrekt pausiert hat (das Kontingent ist EINS,
 # nicht pro Slot). Geschrieben wird sie vom TS-Kern über ctx.sharedState
