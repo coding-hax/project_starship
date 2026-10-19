@@ -45,6 +45,7 @@ function fakeContext(): RunnerContext {
     },
     slotId: '1',
     clock: createFixedClock(new Date('2026-07-26T12:00:00Z')),
+    worktreeBase: '/worktrees',
   };
 }
 
