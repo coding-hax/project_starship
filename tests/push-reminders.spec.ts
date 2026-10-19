@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import {
+  createOtherAccount,
   currentAccountId,
   resetAppData,
   resetPushData,
   resetReminderData,
   seedReminderPref,
+  setAccountBlocked,
   withDb,
 } from './helpers';
 
@@ -116,6 +118,23 @@ async function insertEventException(
       ],
     ),
   );
+}
+
+async function insertTaskForUser(
+  userId: string,
+  overrides: { title?: string; dueAt?: string | null } = {},
+): Promise<string> {
+  const id = randomUUID();
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO tasks
+        (user_id, id, updated_at, deleted_at, synced_at, sync_seq, title, notes, due_at, priority, completed_at, recurrence_rule, created_at, parent_id)
+       VALUES
+        ($1, $2, now(), NULL, now(), nextval('sync_seq'), $3, NULL, $4, 0, NULL, NULL, now(), NULL)`,
+      [userId, id, overrides.title ?? 'Aufgabe', overrides.dueAt ?? null],
+    ),
+  );
+  return id;
 }
 
 async function insertTask(overrides: {
@@ -358,5 +377,58 @@ test.describe('event-reminder', () => {
     );
     expect(rows.rows).toHaveLength(1);
     expect(rows.rows[0].slot).toBe(`${eventId}:2026-07-27`);
+  });
+});
+
+/**
+ * Mandantentrennung (#1205, S6). `tasks-due` is reused as the probe kind (same
+ * reasoning as the `tasks-due` describe above) — what's under test here is the
+ * outer per-account loop in `sendDueReminders`/`loadDeliverableUsers`, not a new
+ * kind of its own.
+ */
+test.describe('Mandantentrennung (#1205)', () => {
+  const AT_0705_BERLIN = { 'x-e2e-now': '2026-07-20T05:05:00.000Z' }; // 07:05 CEST
+
+  test('nur das Konto mit einer fälligen Aufgabe bekommt eine Erinnerung, das andere nicht (AC1)', async ({
+    request,
+  }) => {
+    const ownerId = await currentAccountId();
+    await insertTaskForUser(ownerId, {
+      title: 'Eigene fällige Aufgabe',
+      dueAt: '2026-07-20T18:00:00.000Z',
+    });
+    // createOtherAccount's own seeded task has no due_at (tests/helpers.ts) — this
+    // account stays silent for tasks-due without any extra setup here.
+    const other = await createOtherAccount('Still');
+
+    const response = await request.post('/api/push/reminders', { headers: AT_0705_BERLIN });
+    expect((await response.json()).sent).toContain('tasks-due');
+
+    const rows = await withDb((client) =>
+      client.query('SELECT user_id FROM reminder_sends WHERE kind = $1', ['tasks-due']),
+    );
+    expect(rows.rows.map((row) => row.user_id)).toEqual([ownerId]);
+    expect(rows.rows.map((row) => row.user_id)).not.toContain(other.userId);
+  });
+
+  test('ein gesperrtes Konto bekommt keine Erinnerung, auch mit fälliger Aufgabe (AC3)', async ({
+    request,
+  }) => {
+    const other = await createOtherAccount('Gesperrt');
+    await insertTaskForUser(other.userId, {
+      title: 'Fällig, aber gesperrt',
+      dueAt: '2026-07-20T18:00:00.000Z',
+    });
+    await setAccountBlocked(other.userId, true);
+
+    await request.post('/api/push/reminders', { headers: AT_0705_BERLIN });
+
+    const rows = await withDb((client) =>
+      client.query('SELECT 1 FROM reminder_sends WHERE kind = $1 AND user_id = $2', [
+        'tasks-due',
+        other.userId,
+      ]),
+    );
+    expect(rows.rows).toHaveLength(0);
   });
 });
