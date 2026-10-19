@@ -572,8 +572,18 @@ export async function deleteAllSessions(): Promise<void> {
  *
  * Wipes every credential and session on the installation first (see above),
  * then redeems a fresh invite pre-bound to the existing admin account — the
- * same shape `scripts/bootstrap-admin.ts` produces. Destructive and never
- * written back to `AUTH_STATE`, same reasoning as `nonAdminContext`.
+ * same shape `scripts/bootstrap-admin.ts` produces. Unlike `nonAdminContext`
+ * (a genuinely different, non-admin account, never allowed to leak into the
+ * shared file), this *is* the admin — `deleteAllSessions()` above just made the
+ * shared `AUTH_STATE` cookie point at a row that no longer exists. Without
+ * writing the fresh one back, the very next spec's cheap `registerPasskey`
+ * check reads `authenticated: false` and — since #1202 removed the open
+ * "Passkey einrichten" entry point — falls back to `seedBootstrapInvite()`,
+ * minting an unrelated second admin account that `resetAppData()` can never
+ * clean up (it deliberately spares every `role = 'admin'` row, see above).
+ * Every further `freshAdminDevice` call in the same run compounds it, so
+ * `/admin`'s account list quietly grows across a whole spec file
+ * (`admin-aktionen.spec.ts` AK6 once saw 5 accounts where 2 were seeded).
  */
 export async function freshAdminDevice(
   browser: Browser,
@@ -592,6 +602,8 @@ export async function freshAdminDevice(
   await page.getByTestId('recovery-code').waitFor();
   await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
   await page.waitForURL('**/uebersicht');
+
+  await context.storageState({ path: AUTH_STATE });
 
   const { rows } = await withDb((client) =>
     client.query('SELECT id FROM credentials ORDER BY created_at DESC LIMIT 1'),

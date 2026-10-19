@@ -11,7 +11,21 @@ test.beforeEach(async ({ page }) => {
   await registerPasskey(page, null);
 });
 
-test('AK5: /admin und /api/admin/accounts antworten einem Nutzer-Konto byte-gleich zu einer nicht existierenden Route', async ({
+test('AK5 (API): /api/admin/accounts antwortet einem Nutzer-Konto byte-gleich zu einer nicht existierenden API-Route', async ({
+  browser,
+  baseURL,
+}) => {
+  const { page, close } = await nonAdminContext(browser, baseURL);
+
+  const adminApi = await page.request.get('/api/admin/accounts');
+  const unknownApi = await page.request.get('/api/dieser-pfad-existiert-nicht-1224');
+  expect(adminApi.status()).toBe(unknownApi.status());
+  expect(await adminApi.text()).toBe(await unknownApi.text());
+
+  await close();
+});
+
+test('AK5 (Seite): /admin antwortet einem Nutzer-Konto byte-gleich zu einer nicht existierenden Seite', async ({
   browser,
   baseURL,
 }) => {
@@ -29,11 +43,6 @@ test('AK5: /admin und /api/admin/accounts antworten einem Nutzer-Konto byte-glei
 
   expect(adminStatus).toBe(unknownStatus);
   expect(adminBody).toBe(unknownBody);
-
-  const adminApi = await page.request.get('/api/admin/accounts');
-  const unknownApi = await page.request.get('/api/dieser-pfad-existiert-nicht-1224');
-  expect(adminApi.status()).toBe(unknownApi.status());
-  expect(await adminApi.text()).toBe(await unknownApi.text());
 
   await close();
 });
