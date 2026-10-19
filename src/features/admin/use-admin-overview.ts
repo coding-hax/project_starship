@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AccountsOverview } from './accounts-overview';
+import type { AccountOverviewRow, AccountsOverview } from './accounts-overview';
 
 type Phase = 'loading' | 'ready' | 'error';
 
@@ -49,5 +49,18 @@ export function useAdminOverview() {
     });
   }, [load]);
 
-  return { phase, overview, reload: load };
+  /**
+   * Applies a status the caller already knows for certain (block/unblock just
+   * confirmed by its own 200) without waiting for a follow-up `reload()` — a
+   * block/unblock toggle's resulting status is fully determined by its own
+   * response, so there's no reason the UI should depend on a second, separately
+   * racing GET to learn something it was already told.
+   */
+  const setAccountStatus = useCallback((id: string, status: AccountOverviewRow['status']) => {
+    setOverview((prev) =>
+      prev ? { ...prev, accounts: prev.accounts.map((a) => (a.id === id ? { ...a, status } : a)) } : prev,
+    );
+  }, []);
+
+  return { phase, overview, reload: load, setAccountStatus };
 }

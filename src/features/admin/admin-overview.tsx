@@ -91,9 +91,10 @@ interface AccountCardProps {
   account: AccountOverviewRow;
   isOwn: boolean;
   actions: ReturnType<typeof useAdminActions>;
+  setAccountStatus: (id: string, status: AccountStatus) => void;
 }
 
-function AccountCard({ account, isOwn, actions }: AccountCardProps) {
+function AccountCard({ account, isOwn, actions, setAccountStatus }: AccountCardProps) {
   const [confirming, setConfirming] = useState<Confirming | null>(null);
   const [deleteInput, setDeleteInput] = useState('');
   const busy = actions.busyId === account.id;
@@ -164,7 +165,13 @@ function AccountCard({ account, isOwn, actions }: AccountCardProps) {
               type="button"
               className="admin-overview__button admin-overview__button--secondary"
               disabled={busy}
-              onClick={() => (account.status === 'gesperrt' ? actions.unblock(account.id) : actions.block(account.id))}
+              onClick={() =>
+                account.status === 'gesperrt'
+                  ? actions.unblock(account.id, () =>
+                      setAccountStatus(account.id, account.devices === 0 ? 'eingeladen' : 'aktiv'),
+                    )
+                  : actions.block(account.id, () => setAccountStatus(account.id, 'gesperrt'))
+              }
             >
               {account.status === 'gesperrt' ? 'Entsperren' : 'Sperren'}
             </button>
@@ -325,7 +332,7 @@ function AuditRow({ entry }: { entry: AuditOverviewRow }) {
 export function AdminOverview() {
   const online = useOnline();
   const ownId = useOwnAccountId();
-  const { phase, overview, reload } = useAdminOverview();
+  const { phase, overview, reload, setAccountStatus } = useAdminOverview();
   const actions = useAdminActions(reload);
 
   if (phase === 'loading') return null;
@@ -367,7 +374,13 @@ export function AdminOverview() {
         {!online && <p className="admin-overview__hint">Geht nur online.</p>}
         <ul className="admin-overview__accounts">
           {accounts.map((account) => (
-            <AccountCard key={account.id} account={account} isOwn={account.id === ownId} actions={actions} />
+            <AccountCard
+              key={account.id}
+              account={account}
+              isOwn={account.id === ownId}
+              actions={actions}
+              setAccountStatus={setAccountStatus}
+            />
           ))}
         </ul>
       </SectionCard>
