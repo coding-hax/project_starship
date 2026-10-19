@@ -1,0 +1,187 @@
+import { db, getMeta, setMeta } from './dexie';
+
+/** The `meta` key the local DB's account marker lives under (S2, #1201) — reuses
+ * `getMeta`/`setMeta` instead of a new store, same as `META_LAST_PULLED_SEQ`. */
+export const META_ACCOUNT_ID = 'accountId';
+
+export type AccountCheckResult = 'ready' | 'blocked' | 'unauthenticated' | 'offline';
+
+interface StatusResponse {
+  authenticated: boolean;
+  userId?: string;
+  blocked?: boolean;
+}
+
+/** Terminal results are cached — `offline` never is, so the next online trigger
+ * (sync's own 'online' listener, a focus event, …) re-checks instead of being
+ * stuck behind a stale miss. */
+let cached: AccountCheckResult | null = null;
+let inFlight: Promise<AccountCheckResult> | null = null;
+
+let blocked = false;
+const blockedListeners = new Set<() => void>();
+function notifyBlocked() {
+  for (const listener of blockedListeners) listener();
+}
+
+/** Flipped by a sync 403 (AK5) or found already blocked by the check below —
+ * either way short-circuits every later `ensureAccountChecked()` without a
+ * fresh fetch. */
+export function markBlocked(): void {
+  cached = 'blocked';
+  if (!blocked) {
+    blocked = true;
+    notifyBlocked();
+  }
+}
+
+export function subscribeBlocked(onChange: () => void): () => void {
+  blockedListeners.add(onChange);
+  return () => blockedListeners.delete(onChange);
+}
+
+export function isBlocked(): boolean {
+  return blocked;
+}
+
+/** For tests/a real re-login after `unauthenticated` — clears the memoized result
+ * so the next call re-checks from scratch instead of replaying a stale verdict. */
+export function resetAccountCheck(): void {
+  cached = null;
+  inFlight = null;
+  blocked = false;
+}
+
+const wipeHooks = new Set<() => void>();
+
+/** Lets another module drop in-memory state a wipe would otherwise leave behind
+ * (the journal DEK in `lock-store.ts`) — registered once at module load, run
+ * every time `wipeLocalDatabase` clears the stores below. */
+export function registerWipeHook(fn: () => void): void {
+  wipeHooks.add(fn);
+}
+
+const unauthenticatedHooks = new Set<() => void>();
+
+/** Lets `sync.ts` forward to its own `onUnauthorized` redirect — registered once
+ * at module load. Needed because `ensureAccountChecked()` now intercepts a stale
+ * cookie *before* `push()`/`pull()` ever reach `/api/sync/*`, so their own 401
+ * branches (which already call `onUnauthorized?.()`) never run; without this hook
+ * the device would wipe silently and never navigate to `/anmelden`. */
+export function registerUnauthenticatedHook(fn: () => void): void {
+  unauthenticatedHooks.add(fn);
+}
+
+/**
+ * Clears every local store in one `rw` transaction over the already-open Dexie
+ * connection — never `indexedDB.deleteDatabase()`/`db.delete()`, which races
+ * Dexie's own `versionchange` handler (journal.spec.ts #338 AC3). `nextAccountId`,
+ * when given, stamps the marker this device now belongs to in the same
+ * transaction; omitted (a plain logout, or an account that no longer exists),
+ * the marker stays empty until the next account checks in.
+ */
+export async function wipeLocalDatabase(nextAccountId?: string): Promise<void> {
+  // The array overload, not the fixed-arity ones (max 5 tables) — seven stores.
+  await db.transaction(
+    'rw',
+    [db.records, db.outbox, db.meta, db.weather, db.journalSession, db.journalKeyStash, db.icsSubscriptions],
+    async () => {
+      await db.records.clear();
+      await db.outbox.clear();
+      await db.meta.clear();
+      await db.weather.clear();
+      await db.journalSession.clear();
+      await db.journalKeyStash.clear();
+      await db.icsSubscriptions.clear();
+      if (nextAccountId) await setMeta(META_ACCOUNT_ID, nextAccountId);
+    },
+  );
+  for (const hook of wipeHooks) hook();
+}
+
+/**
+ * "App sperren" (AK4/AK7, #1201) — unlike `wipeLocalDatabase()`, this keeps the
+ * outbox and the `accountId` marker. A full wipe would silently drop a
+ * not-yet-pushed mutation whenever the best-effort `sync()` ahead of it
+ * (`session-panel.tsx`) fails to land in time — locking the device is not the
+ * same as abandoning unsynced work (AC7, #756: a device must never silently
+ * discard local work on lock/logout). Everything a second person *could* see
+ * is still cleared: `records`, `weather`, the journal session/stash, `.ics`
+ * subscriptions, and every other `meta` key — in particular the pull cursor,
+ * so the next login still runs a full pull from 0 (AK4), not a resume from
+ * wherever this account's last pull left off.
+ *
+ * Accepted, not eliminated, residual risk: the outbox's payloads (cleartext —
+ * journal entries are the one exception, already encrypted before they ever
+ * reach the outbox) stay in IndexedDB, readable via DevTools, until the next
+ * account check wipes them for real (`ensureAccountChecked`'s mismatch path
+ * above, still a full `wipeLocalDatabase()`).
+ */
+export async function lockLocalDatabase(): Promise<void> {
+  const accountId = await getMeta<string>(META_ACCOUNT_ID);
+  await db.transaction(
+    'rw',
+    [db.records, db.meta, db.weather, db.journalSession, db.journalKeyStash, db.icsSubscriptions],
+    async () => {
+      await db.records.clear();
+      await db.meta.clear();
+      await db.weather.clear();
+      await db.journalSession.clear();
+      await db.journalKeyStash.clear();
+      await db.icsSubscriptions.clear();
+      if (accountId) await setMeta(META_ACCOUNT_ID, accountId);
+    },
+  );
+  for (const hook of wipeHooks) hook();
+}
+
+async function check(): Promise<AccountCheckResult> {
+  let response: Response;
+  try {
+    response = await fetch('/api/auth/status');
+  } catch {
+    return 'offline';
+  }
+  if (!response.ok) return 'offline';
+
+  const status: StatusResponse = await response.json();
+
+  if (!status.authenticated) {
+    await wipeLocalDatabase();
+    for (const hook of unauthenticatedHooks) hook();
+    return 'unauthenticated';
+  }
+
+  if (status.blocked) {
+    markBlocked();
+    return 'blocked';
+  }
+
+  const stored = await getMeta<string>(META_ACCOUNT_ID);
+  if (stored !== status.userId) {
+    // A different account than the one this device's IndexedDB belongs to — spill
+    // nothing of A's into B's session. The cursor stays unset, so the next pull
+    // starts fresh from 0 (AK4), not from wherever A's last pull left off.
+    await wipeLocalDatabase(status.userId);
+  }
+
+  blocked = false;
+  return 'ready';
+}
+
+/**
+ * Gates the first pull of every sync (src/local/sync.ts) and `lock-store`'s own
+ * boot — memoized so the many independent boot effects that can trigger a sync
+ * (`SyncBoot`, `JournalHabitBoot`, `lock-store`) serialize onto one in-flight
+ * check instead of racing it, and a wipe this triggers runs exactly once.
+ */
+export async function ensureAccountChecked(): Promise<AccountCheckResult> {
+  if (cached) return cached;
+  if (inFlight) return inFlight;
+
+  inFlight = check();
+  const result = await inFlight;
+  inFlight = null;
+  if (result !== 'offline') cached = result;
+  return result;
+}

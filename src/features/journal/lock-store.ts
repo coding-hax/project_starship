@@ -10,6 +10,7 @@ import {
   rewrapPassphrase,
   type Envelope,
 } from '@/crypto/journal';
+import { ensureAccountChecked, registerWipeHook } from '@/local/account-isolation';
 import { pull, sync } from '@/local/sync';
 import { clearPersistedDek, getPersistedDek, persistDek } from './dek-session';
 import {
@@ -74,6 +75,18 @@ let channel: BroadcastChannel | null = null;
 let autoLockTimer: ReturnType<typeof setTimeout> | null = null;
 let initPromise: Promise<void> | null = null;
 const listeners = new Set<() => void>();
+
+// A wipe (S2, #1201) drops the local journalSession store, but the DEK already
+// unpacked into this module's memory survives that — nothing else clears it.
+// Registered once at module load so account-isolation's wipeLocalDatabase()
+// never has to import this module back (no cycle).
+registerWipeHook(() => {
+  dek = null;
+  dekEnvelope = null;
+  disarmAutoLock();
+  initPromise = null;
+  setSnapshot({ state: 'loading', error: null });
+});
 
 function notify() {
   for (const listener of listeners) listener();
@@ -180,6 +193,13 @@ function onPersistPrefChange() {
 async function initialize(): Promise<void> {
   const ch = getChannel();
   subscribeJournalPersistPref(onPersistPrefChange);
+
+  // Before reading anything local (S2, #1201): a device whose IndexedDB still
+  // belongs to another account gets wiped right here, via the registered hook
+  // above — otherwise this would unlock with A's persisted DEK a tick before the
+  // wipe lands, a real race since SyncBoot and useJournalLock mount independently.
+  await ensureAccountChecked();
+  if (current.state !== 'loading') return;
 
   const persisted = await getPersistedDek();
   // A direct action (journalSetup/journalUnlock via the E2E bridge) may already

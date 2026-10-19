@@ -37,8 +37,25 @@ vi.mock('./dexie', () => ({
   META_LAST_PULLED_SEQ: 'lastPulledSeq',
 }));
 
+const ensureAccountCheckedMock = vi.fn();
+const markBlockedMock = vi.fn();
+const wipeLocalDatabaseMock = vi.fn();
+// sync.ts calls `registerUnauthenticatedHook()` at its own module-load time (not
+// inside a function body like the mocks above), which runs as soon as the static
+// `import ... from './sync'` below is evaluated — before this file's own `const`
+// statements would otherwise run. `vi.hoisted` is the one way to guarantee this
+// particular mock exists before that happens, not just before `vi.mock` is reached.
+const registerUnauthenticatedHookMock = vi.hoisted(() => vi.fn());
+
+vi.mock('./account-isolation', () => ({
+  ensureAccountChecked: () => ensureAccountCheckedMock(),
+  markBlocked: () => markBlockedMock(),
+  wipeLocalDatabase: () => wipeLocalDatabaseMock(),
+  registerUnauthenticatedHook: (fn: () => void) => registerUnauthenticatedHookMock(fn),
+}));
+
 import { cursorAfterSkips } from './conflict';
-import { pull, push, setUnauthorizedHandler } from './sync';
+import { pull, push, setUnauthorizedHandler, sync } from './sync';
 
 function outboxEntry(overrides: Partial<OutboxEntry> = {}): OutboxEntry {
   return {
@@ -86,11 +103,33 @@ beforeEach(() => {
   recordsGetMock.mockReset().mockResolvedValue(undefined);
   recordsPutMock.mockReset();
   outboxToArrayMock.mockReset().mockResolvedValue([]);
+  ensureAccountCheckedMock.mockReset().mockResolvedValue('ready');
+  markBlockedMock.mockReset();
+  wipeLocalDatabaseMock.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   setUnauthorizedHandler(null);
+});
+
+describe('unauthenticated hook registration (S2, #1201)', () => {
+  it('forwards to the unauthorized handler so a stale cookie caught by ensureAccountChecked itself still redirects', () => {
+    expect(registerUnauthenticatedHookMock).toHaveBeenCalledTimes(1);
+    const registeredHook = registerUnauthenticatedHookMock.mock.calls[0][0] as () => void;
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+
+    registeredHook();
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing when no handler is registered yet', () => {
+    const registeredHook = registerUnauthenticatedHookMock.mock.calls[0][0] as () => void;
+
+    expect(() => registeredHook()).not.toThrow();
+  });
 });
 
 describe('pull', () => {
@@ -170,7 +209,7 @@ describe('pull', () => {
     expect(setMetaMock).not.toHaveBeenCalled();
   });
 
-  it('calls the unauthorized handler and stops on a 401, without touching the cursor', async () => {
+  it('wipes the local database and calls the unauthorized handler on a 401, without touching the cursor (AK6)', async () => {
     const handler = vi.fn();
     setUnauthorizedHandler(handler);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 401)));
@@ -178,6 +217,7 @@ describe('pull', () => {
     const result = await pull();
 
     expect(result).toEqual({ appliedAny: false, complete: false });
+    expect(wipeLocalDatabaseMock).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledTimes(1);
     expect(setMetaMock).not.toHaveBeenCalled();
   });
@@ -186,6 +226,28 @@ describe('pull', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 401)));
 
     await expect(pull()).resolves.toEqual({ appliedAny: false, complete: false });
+  });
+
+  it('marks the account blocked and stops on a 403, without wiping or touching the cursor (AK5)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 403)));
+
+    const result = await pull();
+
+    expect(result).toEqual({ appliedAny: false, complete: false });
+    expect(markBlockedMock).toHaveBeenCalledTimes(1);
+    expect(wipeLocalDatabaseMock).not.toHaveBeenCalled();
+    expect(setMetaMock).not.toHaveBeenCalled();
+  });
+
+  it('never fetches when the account check is not ready', async () => {
+    ensureAccountCheckedMock.mockResolvedValue('blocked');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await pull();
+
+    expect(result).toEqual({ appliedAny: false, complete: false });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   /** `since` grows across pages like production does (read from `getMeta`, written via
@@ -343,7 +405,7 @@ describe('push', () => {
     expect(discardStaleMock).not.toHaveBeenCalled();
   });
 
-  it('calls the unauthorized handler on a 401 instead of marking the queue failed', async () => {
+  it('wipes the local database and calls the unauthorized handler on a 401 instead of marking the queue failed (AK6)', async () => {
     const handler = vi.fn();
     setUnauthorizedHandler(handler);
     pendingMock.mockResolvedValue([outboxEntry({ id: 'm1' })]);
@@ -351,7 +413,19 @@ describe('push', () => {
 
     await push();
 
+    expect(wipeLocalDatabaseMock).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledTimes(1);
+    expect(markFailedMock).not.toHaveBeenCalled();
+  });
+
+  it('marks the account blocked on a 403 instead of marking the queue failed (AK5)', async () => {
+    pendingMock.mockResolvedValue([outboxEntry({ id: 'm1' })]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 403)));
+
+    await push();
+
+    expect(markBlockedMock).toHaveBeenCalledTimes(1);
+    expect(wipeLocalDatabaseMock).not.toHaveBeenCalled();
     expect(markFailedMock).not.toHaveBeenCalled();
   });
 
@@ -365,5 +439,65 @@ describe('push', () => {
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
+describe('sync', () => {
+  it('neither pushes nor pulls when the account check is not ready (#1201)', async () => {
+    ensureAccountCheckedMock.mockResolvedValue('blocked');
+    pendingMock.mockResolvedValue([outboxEntry({ id: 'm1' })]);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await sync();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('pushes and pulls once the account check is ready', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(pullResponse({ changes: [], cursor: 0, hasMore: false }))),
+    );
+
+    await sync();
+
+    expect(ensureAccountCheckedMock).toHaveBeenCalled();
+    expect(setMetaMock).toHaveBeenCalledWith('lastPulledSeq', 0);
+  });
+
+  it('sets inFlight synchronously, before the account check even starts — a second overlapping call never re-checks the account (regression: an await ahead of the inFlight check let two callers both start their own push, observed as a doubled push in capture.spec.ts AC5, #1201 Fund)', async () => {
+    pendingMock.mockResolvedValueOnce([outboxEntry({ id: 'm1' })]).mockResolvedValue([]);
+    // One shared, reusable promise — `pull()` (src/local/sync.ts:209) calls
+    // `ensureAccountChecked()` again within the same lap, same as the real
+    // memoized function would keep returning its own already-settled result.
+    // `mockImplementation` returning a *fresh* promise per call would instead
+    // wedge that second call forever once `resolveCheck` only ever fires once.
+    let resolveCheck: (value: string) => void = () => {};
+    const checkPromise = new Promise<string>((resolve) => {
+      resolveCheck = resolve;
+    });
+    ensureAccountCheckedMock.mockReturnValue(checkPromise);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.toString().includes('/push')
+            ? jsonResponse({ applied: ['m1'], conflicts: [], rejected: [] })
+            : jsonResponse(pullResponse()),
+        ),
+      ),
+    );
+
+    const first = sync();
+    const second = sync();
+
+    // Still unresolved at this point — if the second call reached its own
+    // `ensureAccountChecked()` instead of joining the first's `inFlight`, it would
+    // have called the mock again right here, before either promise settles.
+    expect(ensureAccountCheckedMock).toHaveBeenCalledTimes(1);
+
+    resolveCheck('ready');
+    await Promise.all([first, second]);
   });
 });

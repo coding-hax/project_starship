@@ -1,4 +1,10 @@
 import { stashDisplacedJournalKey } from '@/features/journal/journal-key-stash';
+import {
+  ensureAccountChecked,
+  markBlocked,
+  registerUnauthenticatedHook,
+  wipeLocalDatabase,
+} from './account-isolation';
 import { cursorAfterSkips } from './conflict';
 import { db, getMeta, META_LAST_PULLED_SEQ, setMeta } from './dexie';
 import { discardStale, markApplied, markFailed, pending } from './outbox';
@@ -29,6 +35,12 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   onUnauthorized = handler;
 }
 
+// A stale cookie is now usually caught by `ensureAccountChecked()` itself (S2,
+// #1201) — before push()/pull() ever reach `/api/sync/*` — so their own 401
+// branches below never run. Registered once at module load, reading
+// `onUnauthorized` at call time so it still sees whatever sync-boot.tsx set.
+registerUnauthenticatedHook(() => onUnauthorized?.());
+
 // Without a bound, a request that neither resolves nor rejects (a stalled proxy, a
 // captive portal, a request caught mid-flight by a Playwright route that is removed
 // before it is continued — issue #954 AC7) leaves `push()`/`pull()` awaiting `fetch`
@@ -39,6 +51,15 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
 const SYNC_FETCH_TIMEOUT_MS = 10_000;
 
 export async function sync(): Promise<void> {
+  // Checked and set before any `await` (#1201 Fund): two overlapping callers
+  // must never both see `inFlight` unset. It used to be — `ensureAccountChecked()`
+  // sat *before* this check, and awaiting it let a second caller's `sync()` reach
+  // this line before the first had a chance to set `inFlight`, so both started
+  // their own `push()`/`pull()` concurrently (observed as a double push in
+  // capture.spec.ts AC5, flaky because it depends on exactly how the two awaits
+  // interleave). The account check itself still runs before `push()`/`pull()` —
+  // just inside the critical section now, not ahead of the lock that guards it.
+  //
   // Coalesce overlapping triggers into the running sync, but never let coalescing
   // drop a caller's own work or serve it stale data. A call arriving mid-run sets
   // both flags and joins the in-flight promise. `queuedRerun` resets at the top of
@@ -58,6 +79,12 @@ export async function sync(): Promise<void> {
 
   inFlight = (async () => {
     try {
+      // Gated before any push/pull (S2, #1201): a device whose local DB still
+      // belongs to another account must neither push its stale outbox nor pull
+      // under the wrong session. `ensureAccountChecked` is itself memoized, so
+      // this never re-runs the underlying check once it has settled.
+      if ((await ensureAccountChecked()) !== 'ready') return;
+
       do {
         queuedRerun = false;
         await push();
@@ -105,9 +132,20 @@ export async function push(): Promise<void> {
     return;
   }
 
+  if (response.status === 403) {
+    // Blocked account (S1 AK8) — the local data stays put (AK5), it is not an
+    // error to retry: markBlocked() short-circuits every later check until the
+    // account is unblocked, no error toast, no retry loop.
+    markBlocked();
+    return;
+  }
+
   if (response.status === 401) {
-    // Stale cookie, not a poison mutation — the queue must survive a re-login.
-    // Does not count towards SYNC_ERROR_THRESHOLD (no markFailed).
+    // Stale cookie *or* the account was deleted server-side (AK6) — the two are
+    // indistinguishable here, so both wipe: a merely expired session re-pulls
+    // everything fresh after the next login (AK4), and a deleted account's data
+    // never lingers on this device waiting for a redirect that already happened.
+    await wipeLocalDatabase();
     onUnauthorized?.();
     return;
   }
@@ -144,7 +182,7 @@ export interface PullResult {
   /** At least one page was fetched and applied (the old, single-flag result). */
   appliedAny: boolean;
   /** Every page was fetched through to the end: the server reported `hasMore: false`.
-   *  False as soon as a page fails partway (offline / non-ok / 401) — the account is
+   *  False as soon as a page fails partway (offline / non-ok / 401 / 403) — the account is
    *  then NOT fully checked (#1135, extends #371). */
   complete: boolean;
 }
@@ -166,6 +204,10 @@ export interface PullResult {
  * sync resuming from the last completed page, never restarting at 0 (AK4).
  */
 export async function pull(): Promise<PullResult> {
+  // Gated here too, not just in sync() (S2, #1201): lock-store.ts calls pull()
+  // directly on boot, ahead of its own getPersistedDek() read.
+  if ((await ensureAccountChecked()) !== 'ready') return { appliedAny: false, complete: false };
+
   let appliedAny = false;
   let complete = false;
 
@@ -181,7 +223,12 @@ export async function pull(): Promise<PullResult> {
       return { appliedAny, complete }; // Offline. Try again on the next trigger.
     }
 
+    if (response.status === 403) {
+      markBlocked();
+      return { appliedAny, complete };
+    }
     if (response.status === 401) {
+      await wipeLocalDatabase();
       onUnauthorized?.();
       return { appliedAny, complete };
     }

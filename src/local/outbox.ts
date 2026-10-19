@@ -1,4 +1,5 @@
 import { uuidv7 } from 'uuidv7';
+import { ensureAccountChecked } from './account-isolation';
 import { db, type LocalRecord } from './dexie';
 import type { Mutation, OutboxEntry, SyncTable } from './types';
 
@@ -65,6 +66,14 @@ export function sortByOrder(entries: OutboxEntry[]): OutboxEntry[] {
 }
 
 export async function mutate(input: MutateInput): Promise<string> {
+  // Awaited before anything else (S2, #1201): on a device whose marker does not
+  // yet match the current session, `ensureAccountChecked()` itself clears every
+  // store, `records`/`outbox` included. Without this await, a write landing in
+  // the gap between page load and that check settling raced the wipe and could
+  // be erased by it moments after being written — this call just orders "wipe
+  // decided, if any" before "this write", it never blocks on the outcome.
+  await ensureAccountChecked();
+
   const rowId = input.rowId ?? uuidv7();
   const now = nextTimestamp();
 

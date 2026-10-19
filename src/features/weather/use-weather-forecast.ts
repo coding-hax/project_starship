@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { WeatherLocation } from '@/features/settings/use-weather-location';
+import { ensureAccountChecked } from '@/local/account-isolation';
 import { db, type WeatherDay } from '@/local/dexie';
 import { fetchForecast, isStale, REFRESH_INTERVAL_MS, weatherCacheKey } from './forecast';
 import { useWeatherCache } from './use-weather-cache';
@@ -18,6 +19,13 @@ export interface WeatherForecastState {
  * showing whatever was there before.
  */
 async function refreshIfStale(location: WeatherLocation, cacheKey: string): Promise<void> {
+  // Awaited before anything else (S2, #1201): on a device whose marker does not
+  // yet match the current session, `ensureAccountChecked()` wipes `db.weather`
+  // itself. Without this await, a boot-time read/write here could race that
+  // wipe and get erased moments after being written (same fix as outbox.mutate(),
+  // src/local/outbox.ts).
+  await ensureAccountChecked();
+
   const cached = await db.weather.get(cacheKey);
   if (cached && !isStale(cached.fetchedAt)) return;
   const days = await fetchForecast(location.latitude, location.longitude);

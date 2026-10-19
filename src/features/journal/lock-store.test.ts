@@ -7,6 +7,15 @@ const pull = vi.fn();
 const syncFn = vi.fn();
 vi.mock('@/local/sync', () => ({ pull, sync: syncFn }));
 
+const ensureAccountChecked = vi.fn();
+let wipeHook: (() => void) | null = null;
+vi.mock('@/local/account-isolation', () => ({
+  ensureAccountChecked: () => ensureAccountChecked(),
+  registerWipeHook: (fn: () => void) => {
+    wipeHook = fn;
+  },
+}));
+
 const getPersistedDek = vi.fn();
 const persistDek = vi.fn();
 const clearPersistedDek = vi.fn();
@@ -135,6 +144,8 @@ describe('lock-store', () => {
 
     pull.mockReset().mockResolvedValue({ appliedAny: false, complete: false });
     syncFn.mockReset().mockResolvedValue(undefined);
+    ensureAccountChecked.mockReset().mockResolvedValue('ready');
+    wipeHook = null;
     getPersistedDek.mockReset().mockResolvedValue(null);
     persistDek.mockReset().mockResolvedValue(undefined);
     clearPersistedDek.mockReset().mockResolvedValue(undefined);
@@ -351,6 +362,38 @@ describe('lock-store', () => {
 
       expect(store.journalLockSnapshot().state).toBe('locked');
       expect(pull).not.toHaveBeenCalled();
+    });
+
+    it('wartet auf ensureAccountChecked, bevor der persistierte DEK gelesen wird (#1201)', async () => {
+      let resolveCheck: (value: string) => void = () => {};
+      ensureAccountChecked.mockReset().mockReturnValue(
+        new Promise((resolve) => {
+          resolveCheck = resolve;
+        }),
+      );
+
+      const done = store.journalRetryInitialize();
+      expect(getPersistedDek).not.toHaveBeenCalled();
+
+      resolveCheck('ready');
+      await vi.advanceTimersByTimeAsync(SHARE_REQUEST_TIMEOUT_MS);
+      await done;
+
+      expect(getPersistedDek).toHaveBeenCalled();
+    });
+  });
+
+  describe('Wipe-Hook (#1201)', () => {
+    it('registriert sich beim Modul-Load und wirft den entsperrten DEK weg', async () => {
+      await reachUnlocked();
+      expect(store.journalDek()).toBe(fakeDek);
+      expect(wipeHook).not.toBeNull();
+
+      wipeHook?.();
+
+      expect(store.journalDek()).toBeNull();
+      expect(store.journalLockSnapshot().state).toBe('loading');
+      expect(clearPersistedDek).not.toHaveBeenCalled();
     });
   });
 });

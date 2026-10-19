@@ -222,6 +222,14 @@ test.describe('#856: Recovery-Formular unter /anmelden', () => {
     page,
   }) => {
     const before = await credentialCount();
+    // Unmounts the still-live app shell from `beforeEach`'s registerPasskey first —
+    // otherwise its `SyncBoot` keeps polling, and the account-isolation 401 it hits
+    // right after `logout()` fires the very same hard redirect (sync.ts's
+    // `onUnauthorized`) that this test issues explicitly below. Two navigations to
+    // the identical `/anmelden` URL race, and Playwright's own `goto` loses with
+    // `net::ERR_ABORTED` (CI shard 2, 19.10.26). Going through `about:blank` first
+    // tears down that interval/listener before `logout()` can ever race it.
+    await page.goto('about:blank');
     await logout(page);
     await page.goto('/anmelden');
 
