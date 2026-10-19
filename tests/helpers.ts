@@ -134,6 +134,39 @@ export async function createRegistrationCredential(
  * only use it when nothing between here and that `goto` touches the document; callers that
  * reach for `window.__starship` first need a loaded page and must keep a target.
  */
+/**
+ * Seeds a fresh admin account plus an invite bound to it — the same shape
+ * `scripts/bootstrap-admin.ts` produces, direct-inserted for test speed
+ * (mirrors `seedRecoveryCode` in auth-recovery-register.spec.ts). Returns the
+ * plaintext token for `/einladung/<token>`; the database only ever sees its hash,
+ * same discipline as the real script.
+ */
+export async function seedBootstrapInvite(): Promise<string> {
+  const adminId = randomUUID();
+  const token = randomBytes(32).toString('base64url');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  await withDb(async (client) => {
+    await client.query("INSERT INTO users (id, role, display_name) VALUES ($1, 'admin', 'Admin')", [
+      adminId,
+    ]);
+    await client.query(
+      `INSERT INTO invites (id, token_hash, created_by, label, expires_at, user_id)
+       VALUES ($1, $2, $3, 'Admin-Bootstrap', $4, $3)`,
+      [randomUUID(), tokenHash, adminId, expiresAt],
+    );
+  });
+
+  return token;
+}
+
+/**
+ * Registration since #1202 (S3) only ever opens through an invite link — there is
+ * no more "Passkey einrichten" button on an empty installation. `seedBootstrapInvite`
+ * stands in for `scripts/bootstrap-admin.ts` so every call here doesn't also pay for
+ * spinning up that CLI.
+ */
 export async function registerPasskey(page: Page, target: string | null = '/uebersicht') {
   const authenticated = await page.request
     .get('/api/auth/status')
@@ -148,7 +181,8 @@ export async function registerPasskey(page: Page, target: string | null = '/uebe
 
   await enableVirtualAuthenticator(page);
 
-  await page.goto('/anmelden');
+  const token = await seedBootstrapInvite();
+  await page.goto(`/einladung/${token}`);
   await page.getByRole('button', { name: 'Passkey einrichten' }).click();
 
   // Shown exactly once. If this ever stops appearing, recovery is silently broken.

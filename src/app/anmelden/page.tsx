@@ -7,7 +7,7 @@ import { PageFace } from '@/ui/faces';
 import { OfflineNotice } from '@/ui/offline-notice';
 import { useOnline } from '@/ui/use-online';
 
-type Mode = 'loading' | 'setup' | 'login';
+type Mode = 'loading' | 'no-invite' | 'login';
 
 /**
  * @simplewebauthn/browser v13 wraps the original DOMException in `.cause` — this
@@ -32,55 +32,21 @@ export default function AnmeldenPage() {
   const router = useRouter();
   const online = useOnline();
   const recoveryInputId = useId();
-  const deviceNameInputId = useId();
   const [mode, setMode] = useState<Mode>('loading');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryInput, setRecoveryInput] = useState('');
-  const [deviceName, setDeviceName] = useState('');
 
   useEffect(() => {
     fetch('/api/auth/status')
       .then((r) => r.json())
       .then((s) => {
         if (s.authenticated) router.replace('/uebersicht');
-        else setMode(s.registered ? 'login' : 'setup');
+        else setMode(s.registered ? 'login' : 'no-invite');
       })
       .catch(() => setError('Server nicht erreichbar.'));
   }, [router]);
-
-  async function register() {
-    setBusy(true);
-    setError(null);
-    try {
-      const optionsRes = await fetch('/api/auth/register/options', { method: 'POST' });
-      if (!optionsRes.ok) throw new Error('Registrierung ist nicht möglich.');
-      const options = await optionsRes.json();
-
-      const response = await startRegistration({ optionsJSON: options });
-      const verifyRes = await fetch('/api/auth/register/verify', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          response,
-          challenge: options.challenge,
-          label: deviceName.trim() || undefined,
-        }),
-      });
-      const result = await verifyRes.json();
-      if (!verifyRes.ok || !result.verified) throw new Error(result.error ?? 'Fehlgeschlagen.');
-
-      // Shown once. If it is lost, it is lost.
-      if (result.recoveryCode) setRecoveryCode(result.recoveryCode);
-      else router.replace('/uebersicht');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unbekannter Fehler.');
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function login() {
     setBusy(true);
@@ -163,25 +129,6 @@ export default function AnmeldenPage() {
     }
   }
 
-  if (recoveryCode) {
-    return (
-      <main className="auth" data-ground="anmelden">
-        <h1>Wiederherstellungscode</h1>
-        <p>
-          Speichere ihn jetzt in deinem Passwortmanager. Er wird{' '}
-          <strong>nur dieses eine Mal</strong> angezeigt und ist dein einziger Weg zurück, wenn du
-          den Passkey verlierst.
-        </p>
-        <code data-testid="recovery-code" className="auth__code">
-          {recoveryCode}
-        </code>
-        <button className="auth__button" onClick={() => router.replace('/uebersicht')}>
-          Habe ich gespeichert
-        </button>
-      </main>
-    );
-  }
-
   return (
     <main className="auth" data-ground="anmelden">
       <div className="auth__title-row">
@@ -190,25 +137,8 @@ export default function AnmeldenPage() {
       </div>
       {mode === 'loading' && <p>Einen Moment…</p>}
 
-      {mode === 'setup' && (
-        <>
-          <p>Richte deinen Passkey ein. Danach genügt Face ID.</p>
-          <label htmlFor={deviceNameInputId} className="auth__label">
-            Gerätename (optional)
-          </label>
-          <input
-            id={deviceNameInputId}
-            type="text"
-            value={deviceName}
-            onChange={(event) => setDeviceName(event.target.value)}
-            placeholder="z. B. iPhone"
-            className="auth__input"
-            disabled={busy}
-          />
-          <button className="auth__button" onClick={register} disabled={busy}>
-            {busy ? 'Einen Moment…' : 'Passkey einrichten'}
-          </button>
-        </>
+      {mode === 'no-invite' && (
+        <p>Diese App ist nur über einen Einladungs-Link erreichbar.</p>
       )}
 
       {mode === 'login' && (
