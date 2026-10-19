@@ -12,7 +12,7 @@
 - `auth-{geraete,sperren,recovery-register}.spec.ts` / `auth-{verify,rate-limit}.spec.ts` — Passkeys/Sitzungen, Sperren, Recovery; Verify-Fehler, Rate-Limit
 - `einladung.spec.ts` — Einladungs-Token: Hash, Einlösen, Einmaligkeit, Bootstrap
 - `ics.spec.ts` / `quota.spec.ts` — ICS-Rate-Limit je Konto; Speicherquote, 413
-- `admin-uebersicht.spec.ts` — Admin-Zugang (404/Anmelden), Kennzahlen je Konto, kein Inhalt
+- `admin-{uebersicht,aktionen}.spec.ts` — Zugang, Kennzahlen; Sperren/Reissue/Löschen+Audit
 - `push.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` / `schema.spec.ts` — Push-Abo; Reminder-Versand; Reminder-Panel; Schema-Exaktheit
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `uebersicht-{ladezustand,begruessung}.spec.ts` — Aufgaben-Schreibwege, Filter; Übersicht: Woche, nächster Termin, Laden
 - `capture.spec.ts` / `capture-{uebersicht,router,routine-neu}.spec.ts` / `capture-{art,wiederholung,zeigerzeit}.spec.ts` — Freitext → Aufgabe/Termin/Routine

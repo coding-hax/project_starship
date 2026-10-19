@@ -20,7 +20,7 @@
 ## src/auth
 
 - `session.ts` / `auth-response.ts` / `device-cookie.ts` — Session-Token+requireUser()/requireAdmin(); 401/403/404; Geräte-Etikett
-- `activity.ts` — last_seen_at/user_activity_days, gedrosselt 1×/h (requireUser)
+- `activity.ts` — last_seen_at/user_activity_days, 1×/h (requireUser)
 - `session-cookie.ts` — nur SESSION_COOKIE, von `middleware.ts` Edge-Runtime-ladbar
 - `webauthn.ts` / `rate-limit.ts` — Challenges/Credentials/Recovery; Fixed-Window, fail-open bei DB-Fehler
 - `invite.ts` — Einladungs-Tokens: erzeugen, prüfen, einmalig einlösen

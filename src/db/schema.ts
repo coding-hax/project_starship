@@ -457,6 +457,43 @@ export type UserActivityDay = typeof userActivityDays.$inferSelect;
 export type NewUserActivityDay = typeof userActivityDays.$inferInsert;
 
 /**
+ * Who did what to which account, and when (S5, #1204 AK8). Server
+ * infrastructure like `sessions`/`invites`/`user_activity_days` above — no
+ * `syncColumns`, no `SYNC_REGISTRY` entry, no Dexie counterpart;
+ * `check-tenant-isolation.sh` only scans tables that spread `syncColumns`, so
+ * this one sits structurally outside its reach.
+ *
+ * `actorUserId`/`targetUserId` reference `users` with `ON DELETE SET NULL`,
+ * not cascade — AK5 hard-deletes the `users` row, and AK8 requires the audit
+ * trail to survive exactly that deletion ("nicht löschbar"). A cascading FK
+ * would delete the very entry that records the deletion. `actorLabel`/
+ * `targetLabel` are a snapshot of `users.display_name` taken at the moment of
+ * the action, so the row stays readable after the account it names is gone —
+ * `display_name` is an admin label, never user content (ADR-0031).
+ *
+ * No `DELETE` path exists on this table anywhere in the codebase — "nicht
+ * löschbar" is guaranteed by the absence of a write path, not by a flag.
+ */
+export const adminAudit = pgTable(
+  'admin_audit',
+  {
+    id: uuid('id').primaryKey(),
+    actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+    actorLabel: text('actor_label'),
+    targetUserId: uuid('target_user_id').references(() => users.id, { onDelete: 'set null' }),
+    targetLabel: text('target_label'),
+    action: text('action')
+      .$type<'block' | 'unblock' | 'reissue' | 'delete-journal' | 'delete-account'>()
+      .notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('admin_audit_created_at_idx').on(table.createdAt)],
+);
+
+export type AdminAudit = typeof adminAudit.$inferSelect;
+export type NewAdminAudit = typeof adminAudit.$inferInsert;
+
+/**
  * WebAuthn challenges. Kept server-side rather than in a cookie so a replay cannot
  * be mounted by handing the client its own challenge back.
  */

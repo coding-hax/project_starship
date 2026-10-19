@@ -19,23 +19,31 @@ function hash(value: string): string {
  * `userId` is omitted for the ordinary case (a fresh account is minted when
  * the invite is redeemed) and set by `scripts/bootstrap-admin.ts` to
  * pre-bind the invite to the admin account it just created — see
- * `src/db/schema.ts`'s doc comment on `invites.userId`.
+ * `src/db/schema.ts`'s doc comment on `invites.userId`. `reissueAccess()`
+ * (S5, #1204 AK3) does the same thing to bind a fresh invite to an
+ * *existing* account whose credentials were just revoked.
+ *
+ * Pass `exec` to run inside the same transaction as the credential/session
+ * wipe it follows (same contract as `burnInvite`).
  */
-export async function createInvite({
-  createdBy,
-  userId = null,
-  label = null,
-  ttlMs = DEFAULT_TTL_MS,
-}: {
-  createdBy: string;
-  userId?: string | null;
-  label?: string | null;
-  ttlMs?: number;
-}): Promise<{ id: string; token: string }> {
+export async function createInvite(
+  {
+    createdBy,
+    userId = null,
+    label = null,
+    ttlMs = DEFAULT_TTL_MS,
+  }: {
+    createdBy: string;
+    userId?: string | null;
+    label?: string | null;
+    ttlMs?: number;
+  },
+  exec: Pick<typeof db, 'insert'> = db,
+): Promise<{ id: string; token: string }> {
   const id = uuidv7();
   const token = randomBytes(32).toString('base64url');
 
-  await db.insert(invites).values({
+  await exec.insert(invites).values({
     id,
     tokenHash: hash(token),
     createdBy,
