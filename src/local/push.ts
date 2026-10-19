@@ -68,10 +68,18 @@ export async function subscribeToPush(): Promise<PushState> {
   return 'granted';
 }
 
+/**
+ * Uses `getRegistration()`, not `.ready` — `.ready` waits indefinitely for a
+ * worker to become active, but unsubscribing only cares whether one already
+ * exists. On dev (no service worker built at all, see next.config.ts) and for
+ * any real user whose worker hasn't activated yet, `.ready` would simply never
+ * resolve, wedging `lock()` (#1205 AC4) before it ever reaches the redirect.
+ */
 export async function unsubscribeFromPush(): Promise<void> {
   if (!isSupported()) return;
 
-  const registration = await navigator.serviceWorker.ready;
+  const registration = await navigator.serviceWorker.getRegistration();
+  if (!registration) return;
   const subscription = await registration.pushManager.getSubscription();
   if (!subscription) return;
 

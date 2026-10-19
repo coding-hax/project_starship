@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetAppData } from './helpers';
+import { createOtherAccount, createThrowawaySession, registerPasskey, resetAppData } from './helpers';
 
 const EXPORT_BUTTON = 'Alles exportieren';
 
@@ -85,4 +85,44 @@ test('der Export funktioniert offline, weil er aus IndexedDB liest', async ({ pa
   );
 
   await context.setOffline(false);
+});
+
+/**
+ * No second browser context needed: `createOtherAccount` seeds a second account's
+ * row straight in Postgres, and swapping the `starship_session` cookie + reloading
+ * drives the same account switch `tests/konto-isolation.spec.ts` (AK2/AK3) exercises
+ * — the local wipe + pull is what makes account B's IndexedDB (and thus its export)
+ * never see account A's rows, not something this test has to orchestrate itself.
+ */
+test('„Alles exportieren“ exportiert ausschließlich das eigene Konto (#1205 AC7)', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  await registerPasskey(page, '/aufgaben');
+  await seedTask(page, { title: 'A-Aufgabe' });
+
+  await page.goto('/einstellungen');
+  const { payload: payloadA } = await triggerExport(page);
+  const recordsA = payloadA.records as Array<{ table: string; data: Record<string, unknown> }>;
+  expect(recordsA.some((r) => r.table === 'tasks' && r.data.title === 'A-Aufgabe')).toBe(true);
+
+  const other = await createOtherAccount('B');
+  const sessionB = await createThrowawaySession(undefined, undefined, other.userId);
+  await context.addCookies([{ name: 'starship_session', value: sessionB.token, url: baseURL }]);
+  await page.reload();
+
+  await expect
+    .poll(async () => {
+      const dump = JSON.parse(await page.evaluate(() => window.__starship.debugDumpStores())) as {
+        records: Array<{ data?: Record<string, unknown> }>;
+      };
+      return dump.records.some((r) => r.data?.title === other.titles.task);
+    })
+    .toBe(true);
+
+  const { payload: payloadB } = await triggerExport(page);
+  const recordsB = payloadB.records as Array<{ table: string; data: Record<string, unknown> }>;
+  expect(recordsB.some((r) => r.table === 'tasks' && r.data.title === other.titles.task)).toBe(true);
+  expect(recordsB.some((r) => r.table === 'tasks' && r.data.title === 'A-Aufgabe')).toBe(false);
 });

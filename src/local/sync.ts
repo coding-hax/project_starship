@@ -150,6 +150,20 @@ export async function push(): Promise<void> {
     return;
   }
 
+  if (response.status === 413) {
+    // Quota exceeded (#1205 AC6) — the account's own doing, not the sync pipeline
+    // failing, so this does not count towards SYNC_ERROR_THRESHOLD. The queue
+    // survives: a delete-only batch always gets through server-side, so the
+    // account can free space and the very next push succeeds without having
+    // lost anything in between.
+    await markFailed(
+      mutations.map((m) => m.id),
+      'quota',
+      true,
+    );
+    return;
+  }
+
   if (!response.ok) {
     await markFailed(
       mutations.map((m) => m.id),

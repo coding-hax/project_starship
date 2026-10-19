@@ -12,11 +12,16 @@ import { authRateLimits } from '@/db/schema';
  * `invite` (#1202, S3, AK7) is the same shape as `recovery` — its own budget
  * counted only on a failed invite-token attempt — so guessing at tokens cannot
  * borrow against the shared `options` budget either.
+ * `ics` (#1205, S6) is keyed by account, not IP (see `enforce`'s `key` param) —
+ * generous enough for the 6h ICS-freshness window (ADR-0022) plus manual retries,
+ * but still finite, so one account cannot turn `/api/ics` into an open proxy for
+ * everyone sharing its session.
  */
 export const AUTH_RATE_LIMITS = {
   options: { limit: 20, windowMs: 5 * 60 * 1000 },
   recovery: { limit: 5, windowMs: 60 * 60 * 1000 },
   invite: { limit: 5, windowMs: 60 * 60 * 1000 },
+  ics: { limit: 30, windowMs: 60 * 1000 },
 } as const satisfies Record<string, { limit: number; windowMs: number }>;
 
 type Bucket = keyof typeof AUTH_RATE_LIMITS;
@@ -68,11 +73,18 @@ async function pruneStale(bucket: Bucket, windowStart: Date): Promise<void> {
  * Counts this request against `bucket`'s window and blocks once the budget is
  * spent. A DB failure fails open (returns `null`, request proceeds) — a tool that
  * locks its single user out is worse than one that runs briefly unthrottled.
+ *
+ * `key` defaults to the caller's IP (`clientKey`) for the unauthenticated auth
+ * buckets; an authenticated caller (`ics`, #1205) passes its `userId` instead, so
+ * the budget is per-account, not per-address.
  */
-export async function enforce(request: Request, bucket: Bucket): Promise<NextResponse | null> {
+export async function enforce(
+  request: Request,
+  bucket: Bucket,
+  key: string = clientKey(request),
+): Promise<NextResponse | null> {
   const cfg = AUTH_RATE_LIMITS[bucket];
   try {
-    const key = clientKey(request);
     const now = Date.now();
     const windowStart = currentWindowStart(cfg, now);
 

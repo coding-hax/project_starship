@@ -4,17 +4,18 @@
 - `global-setup.ts` / `global-teardown.ts` / `run-lock.ts` — Lauf-Lock, parallele Läufe
 - `route-readiness.ts` — Warten auf kalte, authentifizierte Dev-Route vor Setup-Navigation
 - `helpers.ts` / `auth.setup.ts` — Test-Helfer; echte Passkey-Zeremonie einmal je Lauf
-- `shell.spec.ts` / `nav-order.spec.ts` / `page-transition.spec.ts` — Login-Gate, alle Tabs, Nav-Reihenfolge, globales reduced-motion
-- `settings.spec.ts` / `modules.spec.ts` / `toast.spec.ts` / `sheet-tastatur.spec.ts` — Dark Mode, Kategoriefarben; Modul-Guard; Sync-Fehler-Toast; Sheet bei Tastatur
+- `shell.spec.ts` / `nav-order.spec.ts` / `page-transition.spec.ts` — Login-Gate, alle Tabs, Nav-Reihenfolge, reduced-motion
+- `settings.spec.ts` / `modules.spec.ts` / `toast.spec.ts` / `sheet-tastatur.spec.ts` — Dark Mode, Kategoriefarben; Modul-Guard; Sync-Fehler-Toast; Sheet+Tastatur
 - `sync.spec.ts` / `mandant.spec.ts` / `export.spec.ts` / `persist-storage.spec.ts` — Outbox/Pull/Konflikte; Kontentrennung; Export+Tombstones; Storage-Persistenz
 - `offline-critical.spec.ts` / `navigation.prod.spec.ts` / `csp.prod.spec.ts` / `push-sw.prod.spec.ts` — Prod-Build: SW-Offline-Kreis, Tabs offline, CSP, Push-Handler
 - `shipped.prod.spec.ts` / `smoke.prod.spec.ts` / `playwright.shipped.config.ts` — Rauchtest gegen Bündel; Post-Deploy-Rauchtest
 - `auth-{geraete,sperren,recovery-register}.spec.ts` / `auth-{verify,rate-limit}.spec.ts` — Passkeys/Sitzungen, Sperren, Recovery; Verify-Fehler, Rate-Limit
-- `einladung.spec.ts` — Einladungs-Token: Hash, Einlösen, Einmaligkeit, Bootstrap-Admin
-- `admin-uebersicht.spec.ts` — Admin-Zugang (404/Anmelden), Kennzahlen je Konto, kein Nutzerinhalt
+- `einladung.spec.ts` — Einladungs-Token: Hash, Einlösen, Einmaligkeit, Bootstrap
+- `ics.spec.ts` / `quota.spec.ts` — ICS-Rate-Limit je Konto; Speicherquote, 413
+- `admin-uebersicht.spec.ts` — Admin-Zugang (404/Anmelden), Kennzahlen je Konto, kein Inhalt
 - `push.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` / `schema.spec.ts` — Push-Abo; Reminder-Versand; Reminder-Panel; Schema-Exaktheit
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `uebersicht-{ladezustand,begruessung}.spec.ts` — Aufgaben-Schreibwege, Filter; Übersicht: Woche, nächster Termin, Laden
-- `capture.spec.ts` / `capture-{uebersicht,router,routine-neu}.spec.ts` / `capture-{art,wiederholung,zeigerzeit}.spec.ts` — Freitext → Aufgabe/Termin/Routine, Bestätigung
+- `capture.spec.ts` / `capture-{uebersicht,router,routine-neu}.spec.ts` / `capture-{art,wiederholung,zeigerzeit}.spec.ts` — Freitext → Aufgabe/Termin/Routine
 - `kalender.spec.ts` — Agenda, Editor, Serien+Ausnahmen, Woche/Monat, ICS-Abo inkl. SSRF
 - `habits.spec.ts` / `habits-{uebersicht,week-grid,streak-summary}.spec.ts` / `routinen-rename.spec.ts` — Routinen-Schreibwege, Abhaken, Raster, Verlauf; Route
 - `journal.spec.ts` / `journal-{suche,tageswechsel,jahre}.spec.ts` — Einträge, Migrationen, Suche, Tageswechsel, Tagesschlüssel

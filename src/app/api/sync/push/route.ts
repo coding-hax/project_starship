@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { authErrorResponse } from '@/auth/auth-response';
 import { requireUser } from '@/auth/session';
 import { db } from '@/db';
+import { isOverLimit } from '@/db/storage-quota';
 import { acquireSyncWriteLock } from '@/db/sync-lock';
 import { missingRequired, SYNC_REGISTRY, writableFields } from '@/db/sync-tables';
 import { detectOverwrite, resolveDeletedAt } from '@/local/conflict';
@@ -59,6 +60,17 @@ export async function POST(request: Request) {
   }
 
   const mutations = body.mutations as Mutation[];
+
+  // Quota (#1205 AC6): a batch of only `delete`s can only shrink the account, so
+  // it is always let through — otherwise a full account could never free itself.
+  // Pull/read stays unaffected; this route is the only write path. Fail-open is
+  // inside `isOverLimit` itself, same stance as the auth rate limiter.
+  if (mutations.some((mutation) => mutation.op !== 'delete') && (await isOverLimit(user.userId))) {
+    return NextResponse.json(
+      { error: 'Dein Speicher ist voll. Lösche etwas, um wieder schreiben zu können.' },
+      { status: 413 },
+    );
+  }
 
   const applied: string[] = [];
   const conflicts: PushConflict[] = [];

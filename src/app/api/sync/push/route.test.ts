@@ -40,6 +40,9 @@ vi.mock('@/db', () => ({
   },
 }));
 
+const isOverLimitMock = vi.hoisted(() => vi.fn().mockResolvedValue(false));
+vi.mock('@/db/storage-quota', () => ({ isOverLimit: isOverLimitMock }));
+
 function makeRequest(mutations: unknown): Request {
   return new Request('http://localhost/api/sync/push', {
     method: 'POST',
@@ -64,6 +67,7 @@ describe('POST /api/sync/push', () => {
     insertValues.mockClear();
     updateWhere.mockClear();
     selectLimit.mockReset().mockResolvedValue([]);
+    isOverLimitMock.mockReset().mockResolvedValue(false);
   });
 
   it('applies the valid mutations and rejects the malformed one individually', async () => {
@@ -164,5 +168,38 @@ describe('POST /api/sync/push', () => {
     expect(body.applied).toEqual(['log-b']);
     expect(insertValues).not.toHaveBeenCalled();
     expect(updateWhere).toHaveBeenCalledWith(expect.anything());
+  });
+
+  describe('Speicher-Quote (#1205 AC6)', () => {
+    it('lehnt eine Charge mit einer Nicht-delete-Mutation ab, wenn das Konto über dem Limit liegt', async () => {
+      isOverLimitMock.mockResolvedValue(true);
+      const { POST } = await import('./route');
+
+      const response = await POST(makeRequest([validMutation('a')]));
+      const body = await response.json();
+
+      expect(response.status).toBe(413);
+      expect(typeof body.error).toBe('string');
+      expect(insertValues).not.toHaveBeenCalled();
+    });
+
+    it('lässt eine Charge aus ausschließlich delete durch, auch über dem Limit', async () => {
+      isOverLimitMock.mockResolvedValue(true);
+      const { POST } = await import('./route');
+      const deleteOnly: Mutation = { ...validMutation('a'), op: 'delete', payload: {} };
+
+      const response = await POST(makeRequest([deleteOnly]));
+
+      expect(response.status).toBe(200);
+    });
+
+    it('fragt die Quote gar nicht erst ab, wenn das Konto unter dem Limit liegt', async () => {
+      const { POST } = await import('./route');
+
+      const response = await POST(makeRequest([validMutation('a')]));
+
+      expect(response.status).toBe(200);
+      expect(isOverLimitMock).toHaveBeenCalledWith(SESSION_USER.userId);
+    });
   });
 });

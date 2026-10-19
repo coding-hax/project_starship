@@ -19,7 +19,7 @@
 - `category-colors-boot.tsx` — setzt/entfernt die Kategorie-Farbvariable am Root
 - `calendar-settings-panel.tsx` — Kalenders Settings-Slot: Farben + ICS-Abos
 - `use-habit-history-range.ts` / `routines-settings-panel.tsx` / `.css` — Zeitraum der Verlaufskarte (30 Tage … 1 Woche)
-- `use-admin-role.ts` / `verwaltung-panel.tsx` / `.css` — Link auf /admin, nur role=admin (sonst nicht im DOM)
+- `use-admin-role.ts` / `verwaltung-panel.tsx` / `.css` — Link auf /admin, role=admin (sonst nicht im DOM)
 
 ## src/features/admin
 

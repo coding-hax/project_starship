@@ -1,6 +1,7 @@
 import { promises as dns } from 'node:dns';
 import { NextResponse } from 'next/server';
 import { authErrorResponse } from '@/auth/auth-response';
+import { enforce } from '@/auth/rate-limit';
 import { requireUser } from '@/auth/session';
 import { assertPublicHttpsUrl, isBlockedAddress, SsrfBlockedError } from './ssrf';
 
@@ -66,15 +67,22 @@ async function readCappedText(response: Response): Promise<string> {
  * (check-sync-invariants.sh).
  */
 export async function GET(request: Request) {
+  let user;
   try {
     // The proxy reads no account data of its own (ADR-0022) — the session is the
     // whole check, and a per-account rate limit is #1205 (S6).
-    await requireUser();
+    user = await requireUser();
   } catch (error) {
     const response = authErrorResponse(error);
     if (response) return response;
     throw error;
   }
+
+  // Keyed by account, not IP (#1205 AC5) — one account's abuse of the proxy must
+  // never close it for every other account behind the same address. Counted before
+  // any URL parsing, so even a malformed `url` still spends the budget.
+  const limited = await enforce(request, 'ics', user.userId);
+  if (limited) return limited;
 
   const raw = new URL(request.url).searchParams.get('url');
   if (!raw) {
