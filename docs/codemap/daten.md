@@ -7,6 +7,7 @@
 - `index.ts` / `migrate.ts` — DB-Verbindung, Migrationen anwenden
 - `migrations/` — generierte Migrationen, nie von Hand
 - `migrations/down/` — Down-Pfad je Migration
+- `storage-quota.ts` — Je-Konto-Speicherlimit: Messung + Default/Override, fail-open
 
 ## src/local
 

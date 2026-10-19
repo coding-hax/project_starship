@@ -40,6 +40,12 @@ export const syncSeq = pgSequence('sync_seq');
  *
  * `displayName` is a label the admin assigns to recognise the account in /admin.
  * It is never user content and never shown to anyone but an admin.
+ *
+ * `storageLimitBytes` is the per-account quota (#1205, S6): `NULL` means "use
+ * `DEFAULT_STORAGE_LIMIT_BYTES`" (`src/db/storage-quota.ts`), a number is a
+ * per-account override. Nullable rather than defaulted in the column itself, so
+ * raising the code-wide default later changes every account that never got an
+ * explicit override, not just new ones.
  */
 export const users = pgTable(
   'users',
@@ -50,6 +56,7 @@ export const users = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     blockedAt: timestamp('blocked_at', { withTimezone: true }),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    storageLimitBytes: bigint('storage_limit_bytes', { mode: 'number' }),
   },
   (table) => [index('users_role_idx').on(table.role)],
 );
