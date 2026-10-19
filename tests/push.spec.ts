@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { registerPasskey, resetPushData, withDb } from './helpers';
+import { createThrowawaySession, registerPasskey, resetPushData, withDb } from './helpers';
 
 test.beforeEach(async () => {
   await resetPushData();
@@ -111,11 +111,22 @@ test('Abmelden entfernt das Abo serverseitig (AC2)', async ({ page }) => {
 });
 
 test('App sperren entfernt das Abo des Geräts, damit die nächste Person keine fremden Erinnerungen bekommt (#1205 AC4)', async ({
-  page,
+  browser,
+  baseURL,
 }) => {
+  // A throwaway session in its own context, never the shared AUTH_STATE session every
+  // other project's storageState depends on (same pattern as auth-sperren.spec.ts's
+  // `freshSessionContext`) — this test actually logs out, and doing that against the
+  // shared session would leave every later spec in this worker signed out too (#1205,
+  // quota.spec.ts's e2e-main 401s).
+  const session = await createThrowawaySession();
+  const context = await browser.newContext();
+  await context.addCookies([{ name: 'starship_session', value: session.token, url: baseURL }]);
+  const page = await context.newPage();
+
   await stubNotificationGranted(page);
   await stubPushManager(page);
-  await registerPasskey(page);
+  await registerPasskey(page); // short-circuits on the valid cookie, no ceremony
 
   await page.goto('/einstellungen');
   await page.getByRole('button', { name: 'Erlauben' }).click();
@@ -127,4 +138,6 @@ test('App sperren entfernt das Abo des Geräts, damit die nächste Person keine 
 
   await page.waitForURL('**/anmelden');
   expect(await pushRowCount()).toBe(0);
+
+  await context.close();
 });
