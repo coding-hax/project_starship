@@ -6,6 +6,7 @@ import { SectionCard } from '@/ui/section-card';
 import { useOnline } from '@/ui/use-online';
 import { journalLock } from '@/features/journal/lock-store';
 import { lockLocalDatabase } from '@/local/account-isolation';
+import { unsubscribeFromPush } from '@/local/push';
 import { sync } from '@/local/sync';
 import { useSessions } from './use-sessions';
 import './session-panel.css';
@@ -32,6 +33,12 @@ export function SessionPanel() {
     // failed best-effort sync() above must not cost a not-yet-pushed mutation.
     await lockLocalDatabase();
     await journalLock();
+    // The push endpoint belongs to this browser, not this account (AK4,
+    // #1205) — remove it before the session itself ends, so the next person
+    // on this device never gets this account's reminders. Best-effort: the
+    // server call needs the still-live session, but a failure here must not
+    // block the logout/redirect.
+    await unsubscribeFromPush().catch(() => {});
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch {

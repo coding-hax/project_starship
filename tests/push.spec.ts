@@ -106,3 +106,22 @@ test('Abmelden entfernt das Abo serverseitig (AC2)', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Erlauben' })).toBeVisible();
   expect(await pushRowCount()).toBe(0);
 });
+
+test('App sperren entfernt das Abo des Geräts, damit die nächste Person keine fremden Erinnerungen bekommt (#1205 AC4)', async ({
+  page,
+}) => {
+  await stubNotificationGranted(page);
+  await stubPushManager(page);
+  await registerPasskey(page);
+
+  await page.goto('/einstellungen');
+  await page.getByRole('button', { name: 'Erlauben' }).click();
+  await expect(page.getByRole('button', { name: 'Senden' })).toBeVisible();
+  expect(await pushRowCount()).toBe(1);
+
+  await page.getByRole('button', { name: 'App sperren' }).click();
+  await page.getByRole('button', { name: 'Sperren' }).click();
+
+  await expect(page).toHaveURL(/\/anmelden/);
+  expect(await pushRowCount()).toBe(0);
+});
