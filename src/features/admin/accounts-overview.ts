@@ -1,7 +1,17 @@
 import { cache } from 'react';
 import { desc, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { adminAudit, credentials, invites, sessions, userActivityDays, users } from '@/db/schema';
+import {
+  adminAudit,
+  credentials,
+  invites,
+  pushSubscriptions,
+  recoveryCodes,
+  reminderSends,
+  sessions,
+  userActivityDays,
+  users,
+} from '@/db/schema';
 
 export type AccountStatus = 'eingeladen' | 'aktiv' | 'gesperrt';
 
@@ -16,6 +26,7 @@ export interface AccountOverviewRow {
   status: AccountStatus;
   createdAt: string;
   lastSeenAt: string | null;
+  lastSyncAt: string | null;
   activeDays30: number;
   bytes: number;
   modules: {
@@ -26,6 +37,8 @@ export interface AccountOverviewRow {
   };
   devices: number;
   sessions: number;
+  recovery: { unused: number; total: number };
+  push: { subscriptions: number; reminders30: number };
 }
 
 export interface InviteOverviewRow {
@@ -118,6 +131,50 @@ interface UsageRow {
 }
 
 /**
+ * Every table carrying `syncColumns` (AK1: "alle Tabellen mit `...syncColumns`"),
+ * hand-typed like `USAGE_QUERY` above rather than derived from `SYNC_REGISTRY`
+ * (`@/db/sync-tables`): `habit_freezes` has the full `syncColumns` set (schema.ts)
+ * but no write path reaches it through the generic outbox, so it is absent from
+ * `SYNC_REGISTRY`/`SYNC_TABLES`. Deriving from the registry would silently drop it
+ * from "alle Tabellen mit syncColumns". Harmless either way today — nothing ever
+ * sets its `synced_at`, so it never wins the `max` below — but listing it keeps
+ * this query matching the literal schema invariant, not the client-write allowlist.
+ */
+const LAST_SYNC_QUERY = sql`
+  select user_id, max(synced_at) as last_sync_at
+  from (
+    select user_id, synced_at from sync_state
+    union all
+    select user_id, synced_at from tasks
+    union all
+    select user_id, synced_at from habits
+    union all
+    select user_id, synced_at from habit_logs
+    union all
+    select user_id, synced_at from habit_freezes
+    union all
+    select user_id, synced_at from reminder_prefs
+    union all
+    select user_id, synced_at from category_colors
+    union all
+    select user_id, synced_at from journal_entries
+    union all
+    select user_id, synced_at from journal_keys
+    union all
+    select user_id, synced_at from events
+    union all
+    select user_id, synced_at from event_exceptions
+  ) sub
+  group by user_id
+`;
+
+interface LastSyncRow {
+  [key: string]: unknown;
+  user_id: string;
+  last_sync_at: Date | null;
+}
+
+/**
  * The full `/api/admin/accounts` payload (AK2-AK7) — never a user content field
  * (AK8, see `src/app/api/admin/accounts/route.ts`'s own test). `cache()` (react)
  * memoises this for the lifetime of one request (AK4 "für die Dauer eines
@@ -125,7 +182,7 @@ interface UsageRow {
  * route handler's own copy never runs the aggregation twice.
  */
 export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => {
-  const [accountRows, usageRows, inviteRows, auditRows] = await Promise.all([
+  const [accountRows, usageRows, lastSyncRows, inviteRows, auditRows] = await Promise.all([
     db
       .select({
         id: users.id,
@@ -140,13 +197,20 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
         // (`credentials.id`/`sessions.id` instead of the outer `users.id`), making every
         // count always 0 instead of actually correlating. `user_activity_days` has no
         // `id` column of its own, which is why that one subquery happened to still work.
+        // `recovery_codes`/`push_subscriptions`/`reminder_sends` each have their own
+        // `id` column too, same trap, same fix.
         credentialCount: sql<string>`(select count(*) from ${credentials} where ${credentials.userId} = "users"."id")`,
         sessionCount: sql<string>`(select count(*) from ${sessions} where ${sessions.userId} = "users"."id" and ${sessions.expiresAt} > now())`,
         activeDays30: sql<string>`(select count(*) from ${userActivityDays} where ${userActivityDays.userId} = "users"."id" and ${userActivityDays.day} >= current_date - 30)`,
+        recoveryUnused: sql<string>`(select count(*) from ${recoveryCodes} where ${recoveryCodes.userId} = "users"."id" and ${recoveryCodes.usedAt} is null)`,
+        recoveryTotal: sql<string>`(select count(*) from ${recoveryCodes} where ${recoveryCodes.userId} = "users"."id")`,
+        pushSubs: sql<string>`(select count(*) from ${pushSubscriptions} where ${pushSubscriptions.userId} = "users"."id")`,
+        reminders30: sql<string>`(select count(*) from ${reminderSends} where ${reminderSends.userId} = "users"."id" and ${reminderSends.sentAt} >= now() - interval '30 days')`,
       })
       .from(users)
       .orderBy(users.createdAt),
     db.execute<UsageRow>(USAGE_QUERY),
+    db.execute<LastSyncRow>(LAST_SYNC_QUERY),
     db
       .select({ id: invites.id, label: invites.label, expiresAt: invites.expiresAt })
       .from(invites)
@@ -174,6 +238,11 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     usageByAccount.set(row.user_id, entry);
   }
 
+  const lastSyncByAccount = new Map<string, Date | null>();
+  for (const row of lastSyncRows.rows) {
+    lastSyncByAccount.set(row.user_id, row.last_sync_at);
+  }
+
   const now = Date.now();
   const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
@@ -193,17 +262,22 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     if (row.lastSeenAt && row.lastSeenAt >= thirtyDaysAgo) activeIn30 += 1;
     totalBytes += usage.totalBytes;
 
+    const lastSyncAt = lastSyncByAccount.get(row.id) ?? null;
+
     return {
       id: row.id,
       label: row.label,
       status,
       createdAt: row.createdAt.toISOString(),
       lastSeenAt: row.lastSeenAt ? row.lastSeenAt.toISOString() : null,
+      lastSyncAt: lastSyncAt ? lastSyncAt.toISOString() : null,
       activeDays30: Number(row.activeDays30),
       bytes: usage.totalBytes,
       modules: usage.modules,
       devices: credentialCount,
       sessions: Number(row.sessionCount),
+      recovery: { unused: Number(row.recoveryUnused), total: Number(row.recoveryTotal) },
+      push: { subscriptions: Number(row.pushSubs), reminders30: Number(row.reminders30) },
     };
   });
 
