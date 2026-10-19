@@ -12,7 +12,9 @@ test.beforeEach(async () => {
 test('an unauthenticated visitor is sent to the login', async ({ page }) => {
   await page.goto('/uebersicht');
   await expect(page).toHaveURL(/\/anmelden$/);
-  await expect(page.getByRole('button', { name: 'Passkey einrichten' })).toBeVisible();
+  // No self-service setup any more (#1202, AK5) — an empty installation points at
+  // the invite link instead of offering a button of its own.
+  await expect(page.getByText('Diese App ist nur über einen Einladungs-Link erreichbar.')).toBeVisible();
 });
 
 test('passkey setup issues a recovery code exactly once and opens the app', async ({ page }) => {

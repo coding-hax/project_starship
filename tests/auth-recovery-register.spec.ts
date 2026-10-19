@@ -65,9 +65,9 @@ async function logout(page: Page): Promise<void> {
   expect(response.ok()).toBe(true);
 }
 
-/** Seeds one existing credential (firstSetup=false) via `page` — the ceremony
- *  helpers below never touch `page` again, since recovery always runs from a
- *  different device (see `openRecoveryDevice`). */
+/** Seeds one existing credential (an account already exists) via `page` — the
+ *  ceremony helpers below never touch `page` again, since recovery always runs
+ *  from a different device (see `openRecoveryDevice`). */
 async function seedExistingCredential(page: Page): Promise<void> {
   await resetDatabase();
   await registerPasskey(page); // real ceremony; its own recovery code is unused here
@@ -122,11 +122,12 @@ test.beforeEach(async ({ page }) => {
 /**
  * Every test here wipes the database and mints its own session, which
  * `registerPasskey` writes into the shared AUTH_STATE — and #856 AK2 below
- * signs that session out while the account stays. The next spec's
- * `registerPasskey` cannot heal that state (the setup ceremony only exists on
- * an empty database), so whichever test runs last here must not leave it
- * behind. Hand over what `auth.setup.ts` would: a fresh account and a live
- * shared session.
+ * signs that session out while the account stays. `registerPasskey`'s own fast
+ * path only short-circuits when *this* page is already authenticated (#1202), so
+ * the next spec's call would otherwise seed a second, independent admin account
+ * instead of healing the shared one — whichever test runs last here must not
+ * leave that state behind. Hand over what `auth.setup.ts` would: a fresh
+ * account and a live shared session.
  */
 test.afterEach(async ({ browser }) => {
   await resetDatabase();

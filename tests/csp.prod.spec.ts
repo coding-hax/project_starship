@@ -140,10 +140,11 @@ test.describe('ohne Session-Cookie', () => {
     await page.goto('/anmelden');
     // Same either/or as smoke.prod.spec.ts: by the time this runs, the shared owner
     // session (#115) has already registered a passkey, so this renders "login", not
-    // "setup" — either proves the shell rendered fine, which is all this test is about.
+    // the invite-only hint (#1202, S3) — either proves the shell rendered fine,
+    // which is all this test is about.
     const loginButton = page.getByRole('button', { name: 'Mit Passkey anmelden' });
-    const setupButton = page.getByRole('button', { name: 'Passkey einrichten' });
-    await expect(loginButton.or(setupButton)).toBeVisible();
+    const noInviteHint = page.getByText('Diese App ist nur über einen Einladungs-Link erreichbar.');
+    await expect(loginButton.or(noInviteHint)).toBeVisible();
 
     expect(await page.evaluate(() => window.__violations)).toEqual([]);
   });

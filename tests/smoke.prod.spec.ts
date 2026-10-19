@@ -21,10 +21,11 @@ test('the shell renders a login or setup screen without a session', async ({ pag
   await expect(page.getByRole('heading', { name: 'Willkommen zurück', level: 1 })).toBeVisible();
 
   // Prod already has a passkey registered ("login"); a fresh local/CI database does
-  // not yet ("setup") — either is proof the shell and /api/auth/status render fine.
+  // not yet, and since #1202 (S3) that renders the invite-only hint, not a setup
+  // button — either is proof the shell and /api/auth/status render fine.
   const loginButton = page.getByRole('button', { name: 'Mit Passkey anmelden' });
-  const setupButton = page.getByRole('button', { name: 'Passkey einrichten' });
-  await expect(loginButton.or(setupButton)).toBeVisible();
+  const noInviteHint = page.getByText('Diese App ist nur über einen Einladungs-Link erreichbar.');
+  await expect(loginButton.or(noInviteHint)).toBeVisible();
 });
 
 test('the service worker is reachable', async ({ request, baseURL }) => {

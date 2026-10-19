@@ -135,30 +135,50 @@ export async function createRegistrationCredential(
  * reach for `window.__starship` first need a loaded page and must keep a target.
  */
 /**
+ * Seeds an invite row directly (mirrors `createInvite`/`scripts/bootstrap-admin.ts`
+ * without going through the CLI or an HTTP route — issuing invites otherwise needs
+ * an authenticated admin endpoint this ticket does not add). Returns the plaintext
+ * token for `/einladung/<token>`; the database only ever sees its hash, same
+ * discipline as the real thing.
+ */
+export async function seedInvite({
+  createdBy,
+  userId = null,
+  label = null,
+  expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+}: {
+  createdBy: string;
+  userId?: string | null;
+  label?: string | null;
+  expiresAt?: Date;
+}): Promise<string> {
+  const token = randomBytes(32).toString('base64url');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO invites (id, token_hash, created_by, label, user_id, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [randomUUID(), tokenHash, createdBy, label, userId, expiresAt],
+    ),
+  );
+
+  return token;
+}
+
+/**
  * Seeds a fresh admin account plus an invite bound to it — the same shape
  * `scripts/bootstrap-admin.ts` produces, direct-inserted for test speed
- * (mirrors `seedRecoveryCode` in auth-recovery-register.spec.ts). Returns the
- * plaintext token for `/einladung/<token>`; the database only ever sees its hash,
- * same discipline as the real script.
+ * (mirrors `seedRecoveryCode` in auth-recovery-register.spec.ts).
  */
 export async function seedBootstrapInvite(): Promise<string> {
   const adminId = randomUUID();
-  const token = randomBytes(32).toString('base64url');
-  const tokenHash = createHash('sha256').update(token).digest('hex');
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-  await withDb(async (client) => {
-    await client.query("INSERT INTO users (id, role, display_name) VALUES ($1, 'admin', 'Admin')", [
+  await withDb((client) =>
+    client.query("INSERT INTO users (id, role, display_name) VALUES ($1, 'admin', 'Admin')", [
       adminId,
-    ]);
-    await client.query(
-      `INSERT INTO invites (id, token_hash, created_by, label, expires_at, user_id)
-       VALUES ($1, $2, $3, 'Admin-Bootstrap', $4, $3)`,
-      [randomUUID(), tokenHash, adminId, expiresAt],
-    );
-  });
-
-  return token;
+    ]),
+  );
+  return seedInvite({ createdBy: adminId, userId: adminId, label: 'Admin-Bootstrap' });
 }
 
 /**
