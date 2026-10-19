@@ -171,7 +171,10 @@ const LAST_SYNC_QUERY = sql`
 interface LastSyncRow {
   [key: string]: unknown;
   user_id: string;
-  last_sync_at: Date | null;
+  // Raw driver value, not a `Date`: `db.execute()` returns timestamptz columns as
+  // the Postgres text representation (e.g. `2026-10-19 20:41:08.817+02`), unlike
+  // `db.select()`, which maps them through the schema's column type.
+  last_sync_at: string | null;
 }
 
 /**
@@ -238,9 +241,9 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     usageByAccount.set(row.user_id, entry);
   }
 
-  const lastSyncByAccount = new Map<string, Date | null>();
+  const lastSyncByAccount = new Map<string, string | null>();
   for (const row of lastSyncRows.rows) {
-    lastSyncByAccount.set(row.user_id, row.last_sync_at);
+    lastSyncByAccount.set(row.user_id, row.last_sync_at ? new Date(row.last_sync_at).toISOString() : null);
   }
 
   const now = Date.now();
@@ -270,7 +273,7 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
       status,
       createdAt: row.createdAt.toISOString(),
       lastSeenAt: row.lastSeenAt ? row.lastSeenAt.toISOString() : null,
-      lastSyncAt: lastSyncAt ? lastSyncAt.toISOString() : null,
+      lastSyncAt,
       activeDays30: Number(row.activeDays30),
       bytes: usage.totalBytes,
       modules: usage.modules,
