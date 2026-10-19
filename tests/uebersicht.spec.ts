@@ -202,6 +202,116 @@ test('die Aufgaben-Leerzustandskarte ist auf dem Desktop so breit wie die Routin
   }
 });
 
+async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<string> {
+  return page.evaluate(
+    (p) => window.__starship.mutate({ table: 'habits', op: 'upsert', payload: p }),
+    payload,
+  );
+}
+
+test('der Kopf „Aufgaben / Alle" der leeren Karte sitzt genauso eingerückt wie der Kopf „Routinen" (issue #1228 AK1/AK2)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  // "Alle" existiert immer; die Routinen-Karte zeigt ihren rechten Link nur,
+  // wenn mindestens eine Routine fällig ist (computeHabitProgress) — ohne
+  // Routine (dieses Spec blockt **/api/sync/**, also läuft JournalHabitBoot
+  // nie an, e2e-Fallen #9) gäbe es nichts, dessen rechten Rand man vergleichen
+  // könnte. Direkt über die Outbox geseedet, nicht über den Sync-Pfad.
+  await seedHabit(page, { name: 'Testroutine', schedule: 'daily', color: null, archivedAt: null });
+
+  const taskSurface = page.locator('.task-list__surface');
+  const taskHead = taskSurface.locator('.overview-block__head');
+  const taskTitle = taskHead.locator('.overview-block__title');
+  const taskLink = taskHead.locator('.overview-block__more');
+
+  const habitCard = routinenHead(page);
+  const habitHead = habitCard.locator('.overview-block__head');
+  const habitTitle = habitHead.locator('.overview-block__title');
+  const habitLink = habitHead.locator('.overview-block__more');
+  await expect(habitLink).toBeVisible();
+
+  const [surfaceBox, titleBox, linkBox, habitBox, habitTitleBox, habitLinkBox] = await Promise.all([
+    taskSurface.boundingBox(),
+    taskTitle.boundingBox(),
+    taskLink.boundingBox(),
+    habitCard.boundingBox(),
+    habitTitle.boundingBox(),
+    habitLink.boundingBox(),
+  ]);
+  if (!surfaceBox || !titleBox || !linkBox || !habitBox || !habitTitleBox || !habitLinkBox) {
+    throw new Error('Beide Kartenköpfe müssen sichtbar sein');
+  }
+
+  // AK1: linker Abstand von „Aufgaben" und rechter Abstand von „Alle" zur
+  // jeweiligen Kartenkante, Toleranz 1px wie in der Akzeptanzbeschreibung.
+  expect(
+    Math.abs(titleBox.x - surfaceBox.x - (habitTitleBox.x - habitBox.x)),
+    'linker Abstand von „Aufgaben" vs. „Routinen"',
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      surfaceBox.x + surfaceBox.width - (linkBox.x + linkBox.width) -
+        (habitBox.x + habitBox.width - (habitLinkBox.x + habitLinkBox.width)),
+    ),
+    'rechter Abstand von „Alle" vs. der Routinen-Zahl',
+  ).toBeLessThanOrEqual(1);
+
+  // AK2: oberer Abstand des Kopfs zur jeweiligen Kartenkante.
+  expect(
+    Math.abs(titleBox.y - surfaceBox.y - (habitTitleBox.y - habitBox.y)),
+    'oberer Abstand des Kopfs vs. der Routinen-Karte',
+  ).toBeLessThanOrEqual(1);
+});
+
+test('eine gefüllte Aufgaben-Woche behält ihren einfachen Einzug, kein doppelter Rand durch die Kopf-Korrektur (issue #1228 AK3)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
+  await expect(dueTaskItems(page)).toHaveCount(1);
+
+  // Die Elemente selbst reichen randlos bis an die Fläche (sie tragen ihr
+  // `--space-4` als eigenes `padding`, nicht als Versatz der eigenen Box) —
+  // der Einzug steckt im berechneten `padding-left`, nicht in `boundingBox()`.
+  const [headerPaddingLeft, itemPaddingLeft] = await Promise.all([
+    page.locator('.task-list__group-header').evaluate((el) => getComputedStyle(el).paddingLeft),
+    dueTaskItems(page).first().evaluate((el) => getComputedStyle(el).paddingLeft),
+  ]);
+
+  // --space-4 (16px), einmal — nicht verdoppelt (issue #866). Der neue
+  // seitliche Kopf-Einzug der Leerzustandskarte (issue #1228) ist in
+  // task-list.css strikt auf `.task-list__surface > .overview-block__head`
+  // begrenzt und berührt diese Selektoren nicht — dies ist der Gegenbeweis.
+  expect(headerPaddingLeft, 'Einzug des Gruppenkopfs').toBe('16px');
+  expect(itemPaddingLeft, 'Einzug der Aufgabenzeile').toBe('16px');
+});
+
+test('die reservierte Höhe der leeren Aufgaben-Karte bleibt durch den neuen seitlichen Kopf-Einzug unverändert (issue #1228 AK4, vormals #228 AC6/#1217 AK4)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  const surface = page.locator('.task-list__surface');
+  const withPadding = await surface.boundingBox();
+  if (!withPadding) throw new Error('Leere Karte muss sichtbar sein');
+
+  // Schaltet nur die neue CSS-Regel aus diesem Ticket ab, um isoliert zu
+  // zeigen, dass sie die Höhe nicht verändert — ein `padding-inline` kann das
+  // nur über Zeilenumbruch tun, und bei "Aufgaben"/"Alle" bricht bei 375px
+  // nichts um.
+  await page.addStyleTag({
+    content: '.task-list__surface > .overview-block__head { padding-inline: 0 !important; }',
+  });
+  const withoutPadding = await surface.boundingBox();
+  if (!withoutPadding) throw new Error('Leere Karte muss sichtbar bleiben');
+
+  expect(
+    Math.abs(withPadding.height - withoutPadding.height),
+    'Höhe mit vs. ohne den neuen Kopf-Einzug',
+  ).toBeLessThanOrEqual(1);
+});
+
 /* -------------------------------------------------------------------------- */
 /* issue #974 (T3 von #971): "Nächster Termin" im Blatt-Aufbau — die Uhrzeit  */
 /* trägt die Zeile. Ersetzt den #559-Aufbau (Countdown oben, Zeitraum unten). */
