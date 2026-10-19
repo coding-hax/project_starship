@@ -202,10 +202,23 @@ test('die Aufgaben-Leerzustandskarte ist auf dem Desktop so breit wie die Routin
   }
 });
 
+async function seedHabit(page: Page, payload: Record<string, unknown>): Promise<string> {
+  return page.evaluate(
+    (p) => window.__starship.mutate({ table: 'habits', op: 'upsert', payload: p }),
+    payload,
+  );
+}
+
 test('der Kopf „Aufgaben / Alle" der leeren Karte sitzt genauso eingerückt wie der Kopf „Routinen" (issue #1228 AK1/AK2)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
+  // "Alle" existiert immer; die Routinen-Karte zeigt ihren rechten Link nur,
+  // wenn mindestens eine Routine fällig ist (computeHabitProgress) — ohne
+  // Routine (dieses Spec blockt **/api/sync/**, also läuft JournalHabitBoot
+  // nie an, e2e-Fallen #9) gäbe es nichts, dessen rechten Rand man vergleichen
+  // könnte. Direkt über die Outbox geseedet, nicht über den Sync-Pfad.
+  await seedHabit(page, { name: 'Testroutine', schedule: 'daily', color: null, archivedAt: null });
 
   const taskSurface = page.locator('.task-list__surface');
   const taskHead = taskSurface.locator('.overview-block__head');
@@ -216,6 +229,7 @@ test('der Kopf „Aufgaben / Alle" der leeren Karte sitzt genauso eingerückt wi
   const habitHead = habitCard.locator('.overview-block__head');
   const habitTitle = habitHead.locator('.overview-block__title');
   const habitLink = habitHead.locator('.overview-block__more');
+  await expect(habitLink).toBeVisible();
 
   const [surfaceBox, titleBox, linkBox, habitBox, habitTitleBox, habitLinkBox] = await Promise.all([
     taskSurface.boundingBox(),
@@ -257,37 +271,45 @@ test('eine gefüllte Aufgaben-Woche behält ihren einfachen Einzug, kein doppelt
   await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
   await expect(dueTaskItems(page)).toHaveCount(1);
 
-  const surfaceBox = await page.locator('.task-list__surface').boundingBox();
-  const headerBox = await page.locator('.task-list__group-header').boundingBox();
-  const rowBox = await dueTaskItems(page).first().boundingBox();
-  if (!surfaceBox || !headerBox || !rowBox) {
-    throw new Error('Fläche, Gruppenkopf und Zeile müssen sichtbar sein');
-  }
+  // Die Elemente selbst reichen randlos bis an die Fläche (sie tragen ihr
+  // `--space-4` als eigenes `padding`, nicht als Versatz der eigenen Box) —
+  // der Einzug steckt im berechneten `padding-left`, nicht in `boundingBox()`.
+  const [headerPaddingLeft, itemPaddingLeft] = await Promise.all([
+    page.locator('.task-list__group-header').evaluate((el) => getComputedStyle(el).paddingLeft),
+    dueTaskItems(page).first().evaluate((el) => getComputedStyle(el).paddingLeft),
+  ]);
 
-  // --space-4 (16px), einmal — nicht verdoppelt (issue #866, siehe Kommentar in
-  // task-list.css). Der neue Kopf-Rand der Leerzustandskarte berührt diese
-  // Selektoren nicht, dies ist der Gegenbeweis.
-  expect(headerBox.x - surfaceBox.x, 'Einzug des Gruppenkopfs').toBeCloseTo(16, 0);
-  expect(rowBox.x - surfaceBox.x, 'Einzug der Aufgabenzeile').toBeCloseTo(16, 0);
+  // --space-4 (16px), einmal — nicht verdoppelt (issue #866). Der neue
+  // seitliche Kopf-Einzug der Leerzustandskarte (issue #1228) ist in
+  // task-list.css strikt auf `.task-list__surface > .overview-block__head`
+  // begrenzt und berührt diese Selektoren nicht — dies ist der Gegenbeweis.
+  expect(headerPaddingLeft, 'Einzug des Gruppenkopfs').toBe('16px');
+  expect(itemPaddingLeft, 'Einzug der Aufgabenzeile').toBe('16px');
 });
 
-test('die reservierte Höhe der leeren Aufgaben-Karte bleibt durch die Kopf-Korrektur unverändert (issue #1228 AK4, vormals #228 AC6/#1217 AK4)', async ({
+test('die reservierte Höhe der leeren Aufgaben-Karte bleibt durch den neuen seitlichen Kopf-Einzug unverändert (issue #1228 AK4, vormals #228 AC6/#1217 AK4)', async ({
   page,
 }) => {
   await page.goto('/uebersicht');
-  const emptyBox = await page.locator('.task-list__surface').boundingBox();
-  if (!emptyBox) throw new Error('Leere Karte muss sichtbar sein');
 
-  await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
-  await expect(dueTaskItems(page)).toHaveCount(1);
+  const surface = page.locator('.task-list__surface');
+  const withPadding = await surface.boundingBox();
+  if (!withPadding) throw new Error('Leere Karte muss sichtbar sein');
 
-  const filledBox = await page.locator('.task-list__surface').boundingBox();
-  if (!filledBox) throw new Error('Gefüllte Karte muss sichtbar sein');
+  // Schaltet nur die neue CSS-Regel aus diesem Ticket ab, um isoliert zu
+  // zeigen, dass sie die Höhe nicht verändert — ein `padding-inline` kann das
+  // nur über Zeilenumbruch tun, und bei "Aufgaben"/"Alle" bricht bei 375px
+  // nichts um.
+  await page.addStyleTag({
+    content: '.task-list__surface > .overview-block__head { padding-inline: 0 !important; }',
+  });
+  const withoutPadding = await surface.boundingBox();
+  if (!withoutPadding) throw new Error('Leere Karte muss sichtbar bleiben');
 
-  // Ein Bucket mit genau einer Aufgabe reserviert laut Konstruktion dieselbe
-  // Höhe wie die leere Karte (task-list.css-Kommentar zu #228 AC6/#1217 AK4) —
-  // ein seitliches Padding am Kopf (#1228) ändert nur die Breite, nie die Höhe.
-  expect(Math.abs(filledBox.height - emptyBox.height), 'Höhe leer vs. gefüllt').toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(withPadding.height - withoutPadding.height),
+    'Höhe mit vs. ohne den neuen Kopf-Einzug',
+  ).toBeLessThanOrEqual(1);
 });
 
 /* -------------------------------------------------------------------------- */
