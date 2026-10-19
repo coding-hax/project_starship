@@ -693,6 +693,18 @@ test('mehrfaches Tag-fuer-Tag-Navigieren mit Termin am angezeigten Tag loest kei
   });
   page.on('pageerror', (err) => consoleErrors.push(err.message));
 
+  // beforeEach aborts **/api/sync/** so the timeline never depends on the network
+  // (CLAUDE.md rule 8) — boot's own sync() now gates its first pull() behind
+  // `ensureAccountChecked()` (#1201), which pushes that aborted request's generic
+  // "Failed to load resource" text into the window above instead of landing before
+  // it (it used to resolve before any listener here was attached). Counting the
+  // matching `requestfailed` events, not blanket-filtering the console text, keeps
+  // this assertion just as strict for anything that is not that one known abort.
+  let expectedAbortedSyncRequests = 0;
+  page.on('requestfailed', (request) => {
+    if (request.url().includes('/api/sync/')) expectedAbortedSyncRequests += 1;
+  });
+
   await seedEvent(page, {
     title: 'Dauertermin',
     allDay: false,
@@ -710,7 +722,13 @@ test('mehrfaches Tag-fuer-Tag-Navigieren mit Termin am angezeigten Tag loest kei
   }
 
   await expect(eventCard(page, 'Dauertermin')).toBeVisible();
-  expect(consoleErrors).toEqual([]);
+
+  const unexpectedConsoleErrors = [...consoleErrors];
+  for (let i = 0; i < expectedAbortedSyncRequests; i += 1) {
+    const index = unexpectedConsoleErrors.indexOf('Failed to load resource: net::ERR_FAILED');
+    if (index !== -1) unexpectedConsoleErrors.splice(index, 1);
+  }
+  expect(unexpectedConsoleErrors).toEqual([]);
 });
 
 /* -------------------------------------------------------------------------- */
