@@ -158,6 +158,10 @@ test('AK3: ein Einladungs-Token funktioniert genau einmal — der zweite Versuch
   const adminId = await seedAdmin();
   const token = await seedInvite({ createdBy: adminId });
   await enableVirtualAuthenticator(page);
+  // `createRegistrationCredential` runs `navigator.credentials.create()` via
+  // `page.evaluate` — on the default about:blank page that API doesn't exist
+  // (same reasoning as `openRecoveryDevice` in auth-recovery-register.spec.ts).
+  await page.goto(`/einladung/${token}`);
 
   const first = await redeemInviteViaHttp(page, token);
   expect(first.verifyRes?.ok()).toBe(true);
