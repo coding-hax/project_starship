@@ -29,6 +29,10 @@ export interface AccountOverviewRow {
   sessions: number;
   recovery: { unused: number; total: number };
   push: { subscriptions: number; reminders30: number };
+  /** Minutes of Neon wake-time this account caused in the last 30 days, and its
+   * share (0–100) of the total across all accounts + system sources (#1233 AK5). */
+  wakeMinutes30: number;
+  wakeShare: number;
 }
 
 export interface InviteOverviewRow {
@@ -55,6 +59,8 @@ export interface AccountsOverview {
     blocked: number;
     openInvites: number;
     totalBytes: number;
+    /** Neon wake-time of the last 30 days, split by who caused it (#1233 AK6). */
+    wake: { totalMinutes: number; cronMinutes: number; deployProbeMinutes: number };
   };
   accounts: AccountOverviewRow[];
   invites: InviteOverviewRow[];
@@ -215,6 +221,38 @@ interface HealthRow {
 }
 
 /**
+ * Neon wake-time of the last 30 days (#1233 AK4-AK6), split evenly across every
+ * source active in each 5-minute window: `win` counts, per `window_start`, how
+ * many distinct sources touched it (the partial unique indexes on
+ * `user_activity_windows` guarantee at most one row per source per window, so
+ * `count(*)` *is* that source count); the outer query then attributes
+ * `5.0 / sources` minutes to each row in that window and sums per source. The
+ * sum of every row's share this way is exactly `count(distinct window_start) *
+ * 5` — the total wake-time (AK4's "Summe aller Anteile ist genau die
+ * Gesamtwachzeit") — without a second query to compute that total separately.
+ */
+const WAKE_QUERY = sql`
+  with win as (
+    select window_start, count(*)::numeric as sources
+    from user_activity_windows
+    where window_start >= now() - interval '30 days'
+    group by window_start
+  )
+  select aw.user_id, aw.system_source, sum(5.0 / w.sources) as minutes
+  from user_activity_windows aw
+  join win w using (window_start)
+  where aw.window_start >= now() - interval '30 days'
+  group by aw.user_id, aw.system_source
+`;
+
+interface WakeRow {
+  [key: string]: unknown;
+  user_id: string | null;
+  system_source: 'cron' | 'deploy-probe' | null;
+  minutes: string;
+}
+
+/**
  * The full `/api/admin/accounts` payload (AK2-AK7) — never a user content field
  * (AK8, see `src/app/api/admin/accounts/route.ts`'s own test). `cache()` (react)
  * memoises this for the lifetime of one request (AK4 "für die Dauer eines
@@ -222,7 +260,7 @@ interface HealthRow {
  * route handler's own copy never runs the aggregation twice.
  */
 export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => {
-  const [accountRows, usageRows, lastSyncRows, healthRows, inviteRows, auditRows] = await Promise.all([
+  const [accountRows, usageRows, lastSyncRows, healthRows, wakeRows, inviteRows, auditRows] = await Promise.all([
     db
       .select({
         id: users.id,
@@ -246,6 +284,7 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     db.execute<UsageRow>(USAGE_QUERY),
     db.execute<LastSyncRow>(LAST_SYNC_QUERY),
     db.execute<HealthRow>(HEALTH_QUERY),
+    db.execute<WakeRow>(WAKE_QUERY),
     db
       .select({ id: invites.id, label: invites.label, expiresAt: invites.expiresAt })
       .from(invites)
@@ -288,6 +327,22 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     });
   }
 
+  const wakeByAccount = new Map<string, number>();
+  let cronMinutes = 0;
+  let deployProbeMinutes = 0;
+  let totalWakeMinutes = 0;
+  for (const row of wakeRows.rows) {
+    const minutes = Number(row.minutes);
+    totalWakeMinutes += minutes;
+    if (row.user_id) {
+      wakeByAccount.set(row.user_id, (wakeByAccount.get(row.user_id) ?? 0) + minutes);
+    } else if (row.system_source === 'cron') {
+      cronMinutes += minutes;
+    } else if (row.system_source === 'deploy-probe') {
+      deployProbeMinutes += minutes;
+    }
+  }
+
   const now = Date.now();
   const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
@@ -309,6 +364,8 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     totalBytes += usage.totalBytes;
 
     const lastSyncAt = lastSyncByAccount.get(row.id) ?? null;
+    const wakeMinutes30 = wakeByAccount.get(row.id) ?? 0;
+    const wakeShare = totalWakeMinutes > 0 ? (wakeMinutes30 / totalWakeMinutes) * 100 : 0;
 
     return {
       id: row.id,
@@ -324,6 +381,8 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
       sessions: Number(row.sessionCount),
       recovery: { unused: health.unused, total: health.total },
       push: { subscriptions: health.subscriptions, reminders30: health.reminders30 },
+      wakeMinutes30,
+      wakeShare,
     };
   });
 
@@ -335,6 +394,7 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
       blocked,
       openInvites: inviteRows.length,
       totalBytes,
+      wake: { totalMinutes: totalWakeMinutes, cronMinutes, deployProbeMinutes },
     },
     accounts,
     invites: inviteRows.map((invite) => ({

@@ -74,9 +74,146 @@ test('AK2: die Übersicht zeigt Etikett, Status und die Feld-Labels je Konto', a
 
   await expect(page.getByText('Fremdkonto')).toBeVisible();
   await expect(page.getByText('eingeladen')).toBeVisible();
-  for (const label of ['Angelegt am', 'Zuletzt aktiv', 'Aktive Tage (30)', 'Speicher', 'Geräte', 'Sitzungen']) {
+  for (const label of [
+    'Angelegt am',
+    'Zuletzt aktiv',
+    'Aktive Tage (30)',
+    'Wachzeit 30 T',
+    'Speicher',
+    'Geräte',
+    'Sitzungen',
+  ]) {
     await expect(page.getByText(label).first()).toBeVisible();
   }
+});
+
+test('#1233 AK1: eine Anfrage durch requireUser() vermerkt das 5-Minuten-Fenster fürs eigene Konto', async ({
+  page,
+}) => {
+  const adminId = await currentAccountId();
+
+  const response = await page.request.get('/api/admin/accounts');
+  expect(response.ok()).toBe(true);
+  const body = await response.json();
+
+  const adminRow = body.accounts.find((account: { id: string }) => account.id === adminId);
+  expect(adminRow).toBeTruthy();
+  expect(adminRow.wakeMinutes30).toBeGreaterThan(0);
+});
+
+test('#1233 AK3: GET /api/health und der Cron-Pfad von POST /api/push/reminders zählen als eigene Systemquellen', async ({
+  page,
+}) => {
+  const healthResponse = await page.request.get('/api/health');
+  expect(healthResponse.ok()).toBe(true);
+
+  const cronResponse = await page.request.post('/api/push/reminders', {
+    headers: { Authorization: 'Bearer e2e-throwaway-reminder-secret' },
+  });
+  expect(cronResponse.ok()).toBe(true);
+
+  const response = await page.request.get('/api/admin/accounts');
+  const body = await response.json();
+
+  expect(body.summary.wake.deployProbeMinutes).toBeGreaterThan(0);
+  expect(body.summary.wake.cronMinutes).toBeGreaterThan(0);
+});
+
+test('#1233 AK4/AK5: Wachzeit-Regel — ein Fenster teilt 5 Minuten zu gleichen Teilen auf seine Quellen auf', async ({
+  page,
+}) => {
+  const solo = await createOtherAccount('Solo-Konto');
+  const pairA = await createOtherAccount('Paar-Konto-A');
+  const pairB = await createOtherAccount('Paar-Konto-B');
+  const withCron = await createOtherAccount('Cron-Konto');
+
+  // Weit genug in der Vergangenheit (aber innerhalb der 30-Tage-Anzeige), damit
+  // keine im selben Lauf live vermerkte Anfrage in dasselbe Fenster fällt.
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO user_activity_windows (user_id, system_source, window_start) VALUES
+         ($1, NULL, date_trunc('hour', now()) - interval '10 days'),
+         ($2, NULL, date_trunc('hour', now()) - interval '11 days'),
+         ($3, NULL, date_trunc('hour', now()) - interval '11 days'),
+         ($4, NULL, date_trunc('hour', now()) - interval '12 days'),
+         (NULL, 'cron', date_trunc('hour', now()) - interval '12 days')`,
+      [solo.userId, pairA.userId, pairB.userId, withCron.userId],
+    ),
+  );
+
+  const response = await page.request.get('/api/admin/accounts');
+  const body = await response.json();
+  const accounts: Array<{ id: string; wakeMinutes30: number; wakeShare: number }> = body.accounts;
+  const row = (userId: string) => accounts.find((account) => account.id === userId);
+
+  // Ein Konto allein in einem Fenster: 5 min.
+  expect(row(solo.userId)?.wakeMinutes30).toBe(5);
+  // Zwei Konten im selben Fenster: je 2,5 min.
+  expect(row(pairA.userId)?.wakeMinutes30).toBe(2.5);
+  expect(row(pairB.userId)?.wakeMinutes30).toBe(2.5);
+  // Ein Konto und `cron` im selben Fenster: je 2,5 min.
+  expect(row(withCron.userId)?.wakeMinutes30).toBe(2.5);
+
+  // AK5: der Anteil ist der rechnerisch korrekte, nicht nur ein Platzhalter.
+  const total = body.summary.wake.totalMinutes;
+  for (const account of [solo, pairA, pairB, withCron]) {
+    const r = row(account.userId);
+    expect(r?.wakeShare).toBeCloseTo((r!.wakeMinutes30 / total) * 100, 5);
+  }
+
+  // AK4: „Die Summe aller Anteile ist genau die Gesamtwachzeit" — gilt für
+  // jede Kontoreihe plus die Systemquellen, unabhängig von sonstigen,
+  // zeitgleich im Lauf vermerkten Fenstern.
+  const accountSum = accounts.reduce((sum: number, account) => sum + account.wakeMinutes30, 0);
+  expect(accountSum + body.summary.wake.cronMinutes + body.summary.wake.deployProbeMinutes).toBeCloseTo(
+    total,
+    5,
+  );
+});
+
+test('#1233 AK7: Wachzeitfenster verlassen /api/admin/* nie als einzelne Zeitpunkte', async ({ page }) => {
+  const other = await createOtherAccount('Zeitstempel-Konto');
+  const markedWindowStart = new Date(Date.UTC(2026, 0, 1, 10, 5, 0));
+  await withDb((client) =>
+    client.query('INSERT INTO user_activity_windows (user_id, window_start) VALUES ($1, $2)', [
+      other.userId,
+      markedWindowStart,
+    ]),
+  );
+
+  const response = await page.request.get('/api/admin/accounts');
+  const raw = JSON.stringify(await response.json());
+
+  expect(raw).not.toContain(markedWindowStart.toISOString());
+  expect(raw).not.toContain('2026-01-01T10:05');
+});
+
+test('#1233 AK8: Fenster älter als 31 Tage werden gelöscht, 30 Tage alte bleiben', async ({ page }) => {
+  const old = await createOtherAccount('Altes-Fenster-Konto');
+  const recent = await createOtherAccount('Junges-Fenster-Konto');
+
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO user_activity_windows (user_id, window_start) VALUES
+         ($1, date_trunc('hour', now()) - interval '32 days'),
+         ($2, date_trunc('hour', now()) - interval '30 days')`,
+      [old.userId, recent.userId],
+    ),
+  );
+
+  // Jede Anfrage durch requireUser() prunt mit (recordActivityWindow).
+  const response = await page.request.get('/api/admin/accounts');
+  expect(response.ok()).toBe(true);
+
+  const rows = await withDb((client) =>
+    client.query('SELECT user_id FROM user_activity_windows WHERE user_id = ANY($1)', [
+      [old.userId, recent.userId],
+    ]),
+  );
+  const remainingIds = rows.rows.map((row: { user_id: string }) => row.user_id);
+
+  expect(remainingIds).not.toContain(old.userId);
+  expect(remainingIds).toContain(recent.userId);
 });
 
 test('AK4/AK5/AK6/AK7/AK8: echte Zahlen je Konto, offene Einladungen, kein Nutzerinhalt leckt', async ({
