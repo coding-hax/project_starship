@@ -172,6 +172,25 @@ export async function endOtherSessions(userId: string): Promise<number> {
   return deleted.length;
 }
 
+/**
+ * Ends every live session of `userId`, no exception (S5, #1204 AK1) —
+ * unlike `endOtherSessions` above, the caller here is an admin acting on a
+ * *different* account, so there is no "own" session to spare. Optional
+ * `exec` (same contract as `burnInvite`) lets `blockAccount()` run this in
+ * the same transaction as the `blocked_at` write, so a crash between the two
+ * can never leave a blocked account with a live session.
+ */
+export async function endAllSessions(
+  userId: string,
+  exec: Pick<typeof db, 'delete'> = db,
+): Promise<number> {
+  const deleted = await exec
+    .delete(sessions)
+    .where(eq(sessions.userId, userId))
+    .returning({ id: sessions.id });
+  return deleted.length;
+}
+
 export interface SessionSummary {
   id: string;
   deviceId: string | null;
