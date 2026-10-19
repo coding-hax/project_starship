@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import {
   createOtherAccount,
@@ -90,6 +91,25 @@ test('AK4/AK5/AK6/AK7/AK8: echte Zahlen je Konto, offene Einladungen, kein Nutze
     client.query("UPDATE invites SET used_at = now() WHERE label = 'Verbrauchte-Einladung'"),
   );
 
+  // #1234 AK5: weder ein gesäter Push-Endpunkt/User-Agent noch ein code_hash
+  // dürfen in der Antwort vorkommen.
+  const markedEndpoint = `https://push.example/${randomUUID()}`;
+  const markedUserAgent = `Marker-UA-${randomUUID()}`;
+  const markedCodeHash = `marker-hash-${randomUUID()}`;
+  await withDb((client) =>
+    client.query(
+      'INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, user_agent) VALUES ($1, $2, $3, $4, $5, $6)',
+      [randomUUID(), other.userId, markedEndpoint, 'p256dh', 'auth', markedUserAgent],
+    ),
+  );
+  await withDb((client) =>
+    client.query('INSERT INTO recovery_codes (id, user_id, code_hash) VALUES ($1, $2, $3)', [
+      randomUUID(),
+      other.userId,
+      markedCodeHash,
+    ]),
+  );
+
   const response = await page.request.get('/api/admin/accounts');
   expect(response.ok()).toBe(true);
   const body = await response.json();
@@ -99,6 +119,11 @@ test('AK4/AK5/AK6/AK7/AK8: echte Zahlen je Konto, offene Einladungen, kein Nutze
   for (const value of Object.values(other.titles)) {
     expect(raw).not.toContain(value);
   }
+
+  // #1234 AK5.
+  expect(raw).not.toContain(markedEndpoint);
+  expect(raw).not.toContain(markedUserAgent);
+  expect(raw).not.toContain(markedCodeHash);
 
   // AK4/AK5: echte Zeilen-/Byte-Zahlen je Modul für das gesäte Konto.
   const otherRow = body.accounts.find((account: { id: string }) => account.id === other.userId);
@@ -121,6 +146,83 @@ test('AK4/AK5/AK6/AK7/AK8: echte Zahlen je Konto, offene Einladungen, kein Nutze
   expect(open).toBeTruthy();
   expect(open?.expiresAt).toBeTruthy();
   expect(invites.find((invite) => invite.label === 'Verbrauchte-Einladung')).toBeUndefined();
+});
+
+test('#1234 AK1/AK2/AK3/AK4: Gesundheitswerte je Konto gegen gesäten Bestand', async ({ page }) => {
+  const data = await createOtherAccount('Daten-Konto');
+
+  const neverId = randomUUID();
+  await withDb((client) =>
+    client.query("INSERT INTO users (id, role, display_name) VALUES ($1, 'user', 'Nie-Konto')", [
+      neverId,
+    ]),
+  );
+
+  const usedUpId = randomUUID();
+  await withDb(async (client) => {
+    await client.query(
+      "INSERT INTO users (id, role, display_name) VALUES ($1, 'user', 'Verbraucht-Konto')",
+      [usedUpId],
+    );
+    await client.query(
+      `INSERT INTO recovery_codes (id, user_id, code_hash, used_at)
+       VALUES ($1, $2, $3, now()), ($4, $2, $5, now())`,
+      [randomUUID(), usedUpId, `hash-${randomUUID()}`, randomUUID(), `hash-${randomUUID()}`],
+    );
+  });
+
+  const pushId = randomUUID();
+  await withDb(async (client) => {
+    await client.query(
+      "INSERT INTO users (id, role, display_name) VALUES ($1, 'user', 'Push-Konto')",
+      [pushId],
+    );
+    await client.query(
+      `INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth)
+       VALUES ($1, $2, 'https://push.example/push-a', 'p', 'a'),
+              ($3, $2, 'https://push.example/push-b', 'p', 'a')`,
+      [randomUUID(), pushId, randomUUID()],
+    );
+    // Außerhalb des 30-Tage-Fensters — darf nicht mitzählen.
+    await client.query(
+      `INSERT INTO reminder_sends (id, user_id, kind, send_date, slot, sent_at)
+       VALUES ($1, $2, 'tasks-due', current_date - 31, 'morning', now() - interval '31 days')`,
+      [randomUUID(), pushId],
+    );
+    // Innerhalb des Fensters — Gegenprobe.
+    await client.query(
+      `INSERT INTO reminder_sends (id, user_id, kind, send_date, slot, sent_at)
+       VALUES ($1, $2, 'tasks-due', current_date, 'morning', now())`,
+      [randomUUID(), pushId],
+    );
+  });
+
+  const response = await page.request.get('/api/admin/accounts');
+  expect(response.ok()).toBe(true);
+  const body = await response.json();
+  const accounts: Array<{
+    id: string;
+    lastSyncAt: string | null;
+    recovery: { unused: number; total: number };
+    push: { subscriptions: number; reminders30: number };
+  }> = body.accounts;
+
+  // AK1: Daten-Konto hat einen gesetzten letzten Sync, das „nie"-Konto keinen.
+  const dataRow = accounts.find((account) => account.id === data.userId);
+  expect(dataRow?.lastSyncAt).toBeTruthy();
+
+  const neverRow = accounts.find((account) => account.id === neverId);
+  expect(neverRow?.lastSyncAt).toBeNull();
+  // AK2: „keine erzeugt".
+  expect(neverRow?.recovery).toEqual({ unused: 0, total: 0 });
+
+  // AK2: „alle verbraucht".
+  const usedUpRow = accounts.find((account) => account.id === usedUpId);
+  expect(usedUpRow?.recovery).toEqual({ unused: 0, total: 2 });
+
+  // AK3: zwei Abos, nur die 30-Tage-Erinnerung zählt.
+  const pushRow = accounts.find((account) => account.id === pushId);
+  expect(pushRow?.push).toEqual({ subscriptions: 2, reminders30: 1 });
 });
 
 test.describe('AK10: Einstellungs-Eintrag „Verwaltung" nur für role=admin', () => {

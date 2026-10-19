@@ -16,6 +16,7 @@ export interface AccountOverviewRow {
   status: AccountStatus;
   createdAt: string;
   lastSeenAt: string | null;
+  lastSyncAt: string | null;
   activeDays30: number;
   bytes: number;
   modules: {
@@ -26,6 +27,8 @@ export interface AccountOverviewRow {
   };
   devices: number;
   sessions: number;
+  recovery: { unused: number; total: number };
+  push: { subscriptions: number; reminders30: number };
 }
 
 export interface InviteOverviewRow {
@@ -118,6 +121,100 @@ interface UsageRow {
 }
 
 /**
+ * Every table carrying `syncColumns` (AK1: "alle Tabellen mit `...syncColumns`"),
+ * hand-typed like `USAGE_QUERY` above rather than derived from `SYNC_REGISTRY`
+ * (`@/db/sync-tables`): `habit_freezes` has the full `syncColumns` set (schema.ts)
+ * but no write path reaches it through the generic outbox, so it is absent from
+ * `SYNC_REGISTRY`/`SYNC_TABLES`. Deriving from the registry would silently drop it
+ * from "alle Tabellen mit syncColumns". Harmless either way today — nothing ever
+ * sets its `synced_at`, so it never wins the `max` below — but listing it keeps
+ * this query matching the literal schema invariant, not the client-write allowlist.
+ */
+const LAST_SYNC_QUERY = sql`
+  select user_id, max(synced_at) as last_sync_at
+  from (
+    select user_id, synced_at from sync_state
+    union all
+    select user_id, synced_at from tasks
+    union all
+    select user_id, synced_at from habits
+    union all
+    select user_id, synced_at from habit_logs
+    union all
+    select user_id, synced_at from habit_freezes
+    union all
+    select user_id, synced_at from reminder_prefs
+    union all
+    select user_id, synced_at from category_colors
+    union all
+    select user_id, synced_at from journal_entries
+    union all
+    select user_id, synced_at from journal_keys
+    union all
+    select user_id, synced_at from events
+    union all
+    select user_id, synced_at from event_exceptions
+  ) sub
+  group by user_id
+`;
+
+interface LastSyncRow {
+  [key: string]: unknown;
+  user_id: string;
+  // Raw driver value, not a `Date`: `db.execute()` returns timestamptz columns as
+  // the Postgres text representation (e.g. `2026-10-19 20:41:08.817+02`), unlike
+  // `db.select()`, which maps them through the schema's column type.
+  last_sync_at: string | null;
+}
+
+/**
+ * Recovery/push health (AK1-AK3 of #1234) — three small grouped aggregates, one
+ * row per account, not four correlated subqueries evaluated once per account
+ * row the way `credentialCount`/`sessionCount`/`activeDays30` below still are.
+ * Same reasoning as `LAST_SYNC_QUERY` above: a plan that correlates once in
+ * total, not once per row, so the main `accountRows` select below stays at its
+ * original (S4, #1203) cost regardless of how many accounts exist.
+ */
+const HEALTH_QUERY = sql`
+  with recovery as (
+    select user_id,
+      count(*) filter (where used_at is null) as unused,
+      count(*) as total
+    from recovery_codes
+    group by user_id
+  ),
+  push as (
+    select user_id, count(*) as subscriptions
+    from push_subscriptions
+    group by user_id
+  ),
+  reminders as (
+    select user_id, count(*) as reminders30
+    from reminder_sends
+    where sent_at >= now() - interval '30 days'
+    group by user_id
+  )
+  select
+    coalesce(recovery.user_id, push.user_id, reminders.user_id) as user_id,
+    coalesce(recovery.unused, 0) as unused,
+    coalesce(recovery.total, 0) as total,
+    coalesce(push.subscriptions, 0) as subscriptions,
+    coalesce(reminders.reminders30, 0) as reminders30
+  from recovery
+  full outer join push on push.user_id = recovery.user_id
+  full outer join reminders on reminders.user_id = coalesce(recovery.user_id, push.user_id)
+`;
+
+interface HealthRow {
+  [key: string]: unknown;
+  user_id: string;
+  unused: string;
+  total: string;
+  subscriptions: string;
+  reminders30: string;
+}
+
+/**
  * The full `/api/admin/accounts` payload (AK2-AK7) — never a user content field
  * (AK8, see `src/app/api/admin/accounts/route.ts`'s own test). `cache()` (react)
  * memoises this for the lifetime of one request (AK4 "für die Dauer eines
@@ -125,7 +222,7 @@ interface UsageRow {
  * route handler's own copy never runs the aggregation twice.
  */
 export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => {
-  const [accountRows, usageRows, inviteRows, auditRows] = await Promise.all([
+  const [accountRows, usageRows, lastSyncRows, healthRows, inviteRows, auditRows] = await Promise.all([
     db
       .select({
         id: users.id,
@@ -147,6 +244,8 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
       .from(users)
       .orderBy(users.createdAt),
     db.execute<UsageRow>(USAGE_QUERY),
+    db.execute<LastSyncRow>(LAST_SYNC_QUERY),
+    db.execute<HealthRow>(HEALTH_QUERY),
     db
       .select({ id: invites.id, label: invites.label, expiresAt: invites.expiresAt })
       .from(invites)
@@ -174,6 +273,21 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     usageByAccount.set(row.user_id, entry);
   }
 
+  const lastSyncByAccount = new Map<string, string | null>();
+  for (const row of lastSyncRows.rows) {
+    lastSyncByAccount.set(row.user_id, row.last_sync_at ? new Date(row.last_sync_at).toISOString() : null);
+  }
+
+  const healthByAccount = new Map<string, AccountOverviewRow['recovery'] & AccountOverviewRow['push']>();
+  for (const row of healthRows.rows) {
+    healthByAccount.set(row.user_id, {
+      unused: Number(row.unused),
+      total: Number(row.total),
+      subscriptions: Number(row.subscriptions),
+      reminders30: Number(row.reminders30),
+    });
+  }
+
   const now = Date.now();
   const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
@@ -185,6 +299,7 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
 
   const accounts: AccountOverviewRow[] = accountRows.map((row) => {
     const usage = usageByAccount.get(row.id) ?? { modules: emptyModules(), totalBytes: 0 };
+    const health = healthByAccount.get(row.id) ?? { unused: 0, total: 0, subscriptions: 0, reminders30: 0 };
     const credentialCount = Number(row.credentialCount);
     const status: AccountStatus = row.blockedAt ? 'gesperrt' : credentialCount === 0 ? 'eingeladen' : 'aktiv';
 
@@ -193,17 +308,22 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     if (row.lastSeenAt && row.lastSeenAt >= thirtyDaysAgo) activeIn30 += 1;
     totalBytes += usage.totalBytes;
 
+    const lastSyncAt = lastSyncByAccount.get(row.id) ?? null;
+
     return {
       id: row.id,
       label: row.label,
       status,
       createdAt: row.createdAt.toISOString(),
       lastSeenAt: row.lastSeenAt ? row.lastSeenAt.toISOString() : null,
+      lastSyncAt,
       activeDays30: Number(row.activeDays30),
       bytes: usage.totalBytes,
       modules: usage.modules,
       devices: credentialCount,
       sessions: Number(row.sessionCount),
+      recovery: { unused: health.unused, total: health.total },
+      push: { subscriptions: health.subscriptions, reminders30: health.reminders30 },
     };
   });
 
