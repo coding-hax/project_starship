@@ -4,7 +4,7 @@ import { uuidv7 } from 'uuidv7';
 import { burnInvite } from '@/auth/invite';
 import { enforce } from '@/auth/rate-limit';
 import { createSession } from '@/auth/session';
-import { burnRecoveryCode, consumeChallenge, hasAnyCredential, issueRecoveryCode, relyingParty } from '@/auth/webauthn';
+import { burnRecoveryCode, consumeChallenge, issueRecoveryCode, relyingParty } from '@/auth/webauthn';
 import { db } from '@/db';
 import { credentials, users } from '@/db/schema';
 
@@ -32,10 +32,13 @@ export async function POST(request: Request) {
   }
 
   const rp = relyingParty();
-  // A recovery- or invite-backed verify is never firstCredential on a non-empty
-  // installation, but the bootstrap admin's own invite is — determined before the
-  // transaction, same as before #1202.
-  const firstCredential = !(await hasAnyCredential());
+  // Only the bootstrap admin's own invite pre-binds an account to an invite
+  // (`scripts/bootstrap-admin.ts`) — a fresh user-invite has `inviteId` but no
+  // `userId`, a second device or recovery has `userId` but no `inviteId`. Not
+  // `hasAnyCredential()`: an admin account can exist (e.g. seeded directly)
+  // before it ever registers its own passkey, which would otherwise make an
+  // unrelated invite's first redemption look like the bootstrap one.
+  const firstCredential = Boolean(userId) && Boolean(inviteId);
 
   // Neither an account nor an invite named — the AK5 gate from register/options
   // stripped the old "empty database" exception; refuse rather than guess.
