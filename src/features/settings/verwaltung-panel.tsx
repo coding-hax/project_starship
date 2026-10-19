@@ -14,7 +14,7 @@ import './verwaltung-panel.css';
  */
 export function VerwaltungPanel() {
   return (
-    <SectionCard title="Verwaltung" className="verwaltung-panel">
+    <SectionCard className="verwaltung-panel">
       <Link href="/admin" className="verwaltung-panel__link">
         <span>Admin-Bereich</span>
         <IconChevronRight className="verwaltung-panel__chevron" />

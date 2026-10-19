@@ -10,9 +10,11 @@
 - `(app)/wetter/[datum]/page.tsx` — Stundenverlauf, Niederschlag, Wind, Sonnenzeiten
 - `(app)/journal/page.tsx` — Titelzeile mit Datum, rendert Journal-Zustand
 - `(app)/einstellungen/page.tsx` — Darstellung, Reihenfolge, Module, Push je Panel
+- `(admin)/admin/page.tsx` — Konten-Übersicht, nur role=admin (sonst 404/Anmelden)
 - `anmelden/` / `offline/page.tsx` — Passkey: Anmelden/Recovery; SW-Fallback ohne Netz
 - `einladung/[token]/page.tsx` — Einladungs-Link einlösen: Passkey-Zeremonie für ein neues oder vorgebundenes Konto
 - `api/auth/` — WebAuthn (register/login/logout/status), Geräte-/Sitzungswiderruf
+- `api/admin/accounts/route.ts` — Kennzahlen je Konto, nie Nutzerinhalt (requireAdmin)
 - `api/health/route.ts` — SELECT 1+Versions-SHA (offen)
 - `api/sync/` / `api/sync/pull/read-changes-since.ts` — push/pull (einziger Datenzugriff); seitenweiser Snapshot-Lesekern, Cursor-Konsistenz
 - `api/push/` — Abo (subscribe/unsubscribe/test) + Reminder-Versand, Bearer-Secret
