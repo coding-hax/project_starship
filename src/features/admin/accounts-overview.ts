@@ -1,7 +1,7 @@
 import { cache } from 'react';
-import { sql } from 'drizzle-orm';
+import { desc, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { credentials, invites, sessions, userActivityDays, users } from '@/db/schema';
+import { adminAudit, credentials, invites, sessions, userActivityDays, users } from '@/db/schema';
 
 export type AccountStatus = 'eingeladen' | 'aktiv' | 'gesperrt';
 
@@ -34,6 +34,16 @@ export interface InviteOverviewRow {
   expiresAt: string;
 }
 
+export type AdminAuditAction = 'block' | 'unblock' | 'reissue' | 'delete-journal' | 'delete-account';
+
+export interface AuditOverviewRow {
+  id: string;
+  action: AdminAuditAction;
+  actorLabel: string | null;
+  targetLabel: string | null;
+  createdAt: string;
+}
+
 export interface AccountsOverview {
   summary: {
     totalAccounts: number;
@@ -45,7 +55,11 @@ export interface AccountsOverview {
   };
   accounts: AccountOverviewRow[];
   invites: InviteOverviewRow[];
+  audit: AuditOverviewRow[];
 }
+
+/** How far back the admin UI shows the log (AK8: "sichtbar"), not a retention limit. */
+const AUDIT_DISPLAY_LIMIT = 200;
 
 type ModuleKey = 'aufgaben' | 'termine' | 'routinen' | 'journal';
 
@@ -111,7 +125,7 @@ interface UsageRow {
  * route handler's own copy never runs the aggregation twice.
  */
 export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => {
-  const [accountRows, usageRows, inviteRows] = await Promise.all([
+  const [accountRows, usageRows, inviteRows, auditRows] = await Promise.all([
     db
       .select({
         id: users.id,
@@ -137,6 +151,17 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
       .select({ id: invites.id, label: invites.label, expiresAt: invites.expiresAt })
       .from(invites)
       .where(sql`${invites.usedAt} is null and ${invites.expiresAt} > now()`),
+    db
+      .select({
+        id: adminAudit.id,
+        action: adminAudit.action,
+        actorLabel: adminAudit.actorLabel,
+        targetLabel: adminAudit.targetLabel,
+        createdAt: adminAudit.createdAt,
+      })
+      .from(adminAudit)
+      .orderBy(desc(adminAudit.createdAt))
+      .limit(AUDIT_DISPLAY_LIMIT),
   ]);
 
   const usageByAccount = new Map<string, { modules: AccountOverviewRow['modules']; totalBytes: number }>();
@@ -196,6 +221,13 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
       id: invite.id,
       label: invite.label,
       expiresAt: invite.expiresAt.toISOString(),
+    })),
+    audit: auditRows.map((row) => ({
+      id: row.id,
+      action: row.action,
+      actorLabel: row.actorLabel,
+      targetLabel: row.targetLabel,
+      createdAt: row.createdAt.toISOString(),
     })),
   };
 });

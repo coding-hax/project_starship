@@ -102,3 +102,108 @@
 .admin-overview__invite:last-child {
   border-bottom: none;
 }
+
+.admin-overview__actions {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border-faint);
+}
+
+.admin-overview__button {
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: var(--weight-emphasis);
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-spring);
+}
+
+.admin-overview__button:active {
+  opacity: 0.85;
+}
+
+.admin-overview__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-overview__button--secondary {
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.admin-overview__button--danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+
+.admin-overview__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.admin-overview__error {
+  margin: 0;
+  padding: var(--space-2) 0;
+  color: var(--danger);
+  font-size: var(--text-secondary);
+}
+
+.admin-overview__field {
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+}
+
+.admin-overview__link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.admin-overview__link-value {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  font-size: var(--text-secondary);
+  word-break: break-all;
+}
+
+.admin-overview__audit {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.admin-overview__audit-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--border-faint);
+  font-size: var(--text-secondary);
+}
+
+.admin-overview__audit-item:last-child {
+  border-bottom: none;
+}
+
+.admin-overview__audit-time {
+  color: var(--text-muted);
+}
