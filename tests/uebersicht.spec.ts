@@ -202,6 +202,94 @@ test('die Aufgaben-Leerzustandskarte ist auf dem Desktop so breit wie die Routin
   }
 });
 
+test('der Kopf „Aufgaben / Alle" der leeren Karte sitzt genauso eingerückt wie der Kopf „Routinen" (issue #1228 AK1/AK2)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+
+  const taskSurface = page.locator('.task-list__surface');
+  const taskHead = taskSurface.locator('.overview-block__head');
+  const taskTitle = taskHead.locator('.overview-block__title');
+  const taskLink = taskHead.locator('.overview-block__more');
+
+  const habitCard = routinenHead(page);
+  const habitHead = habitCard.locator('.overview-block__head');
+  const habitTitle = habitHead.locator('.overview-block__title');
+  const habitLink = habitHead.locator('.overview-block__more');
+
+  const [surfaceBox, titleBox, linkBox, habitBox, habitTitleBox, habitLinkBox] = await Promise.all([
+    taskSurface.boundingBox(),
+    taskTitle.boundingBox(),
+    taskLink.boundingBox(),
+    habitCard.boundingBox(),
+    habitTitle.boundingBox(),
+    habitLink.boundingBox(),
+  ]);
+  if (!surfaceBox || !titleBox || !linkBox || !habitBox || !habitTitleBox || !habitLinkBox) {
+    throw new Error('Beide Kartenköpfe müssen sichtbar sein');
+  }
+
+  // AK1: linker Abstand von „Aufgaben" und rechter Abstand von „Alle" zur
+  // jeweiligen Kartenkante, Toleranz 1px wie in der Akzeptanzbeschreibung.
+  expect(
+    Math.abs(titleBox.x - surfaceBox.x - (habitTitleBox.x - habitBox.x)),
+    'linker Abstand von „Aufgaben" vs. „Routinen"',
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      surfaceBox.x + surfaceBox.width - (linkBox.x + linkBox.width) -
+        (habitBox.x + habitBox.width - (habitLinkBox.x + habitLinkBox.width)),
+    ),
+    'rechter Abstand von „Alle" vs. der Routinen-Zahl',
+  ).toBeLessThanOrEqual(1);
+
+  // AK2: oberer Abstand des Kopfs zur jeweiligen Kartenkante.
+  expect(
+    Math.abs(titleBox.y - surfaceBox.y - (habitTitleBox.y - habitBox.y)),
+    'oberer Abstand des Kopfs vs. der Routinen-Karte',
+  ).toBeLessThanOrEqual(1);
+});
+
+test('eine gefüllte Aufgaben-Woche behält ihren einfachen Einzug, kein doppelter Rand durch die Kopf-Korrektur (issue #1228 AK3)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
+  await expect(dueTaskItems(page)).toHaveCount(1);
+
+  const surfaceBox = await page.locator('.task-list__surface').boundingBox();
+  const headerBox = await page.locator('.task-list__group-header').boundingBox();
+  const rowBox = await dueTaskItems(page).first().boundingBox();
+  if (!surfaceBox || !headerBox || !rowBox) {
+    throw new Error('Fläche, Gruppenkopf und Zeile müssen sichtbar sein');
+  }
+
+  // --space-4 (16px), einmal — nicht verdoppelt (issue #866, siehe Kommentar in
+  // task-list.css). Der neue Kopf-Rand der Leerzustandskarte berührt diese
+  // Selektoren nicht, dies ist der Gegenbeweis.
+  expect(headerBox.x - surfaceBox.x, 'Einzug des Gruppenkopfs').toBeCloseTo(16, 0);
+  expect(rowBox.x - surfaceBox.x, 'Einzug der Aufgabenzeile').toBeCloseTo(16, 0);
+});
+
+test('die reservierte Höhe der leeren Aufgaben-Karte bleibt durch die Kopf-Korrektur unverändert (issue #1228 AK4, vormals #228 AC6/#1217 AK4)', async ({
+  page,
+}) => {
+  await page.goto('/uebersicht');
+  const emptyBox = await page.locator('.task-list__surface').boundingBox();
+  if (!emptyBox) throw new Error('Leere Karte muss sichtbar sein');
+
+  await seedTask(page, { title: 'Heute fällig', dueAt: TODAY_EVENING });
+  await expect(dueTaskItems(page)).toHaveCount(1);
+
+  const filledBox = await page.locator('.task-list__surface').boundingBox();
+  if (!filledBox) throw new Error('Gefüllte Karte muss sichtbar sein');
+
+  // Ein Bucket mit genau einer Aufgabe reserviert laut Konstruktion dieselbe
+  // Höhe wie die leere Karte (task-list.css-Kommentar zu #228 AC6/#1217 AK4) —
+  // ein seitliches Padding am Kopf (#1228) ändert nur die Breite, nie die Höhe.
+  expect(Math.abs(filledBox.height - emptyBox.height), 'Höhe leer vs. gefüllt').toBeLessThanOrEqual(1);
+});
+
 /* -------------------------------------------------------------------------- */
 /* issue #974 (T3 von #971): "Nächster Termin" im Blatt-Aufbau — die Uhrzeit  */
 /* trägt die Zeile. Ersetzt den #559-Aufbau (Countdown oben, Zeitraum unten). */

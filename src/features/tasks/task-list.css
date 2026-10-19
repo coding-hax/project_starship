@@ -73,6 +73,18 @@
   color: var(--text);
 }
 
+/* The empty-state card head (issue #1217's `OverviewCardHead`, rendered
+   straight into this surface, task-list.tsx) needs its own side inset for the
+   same reason the group header below does: the surface only pads block (see
+   above). Without it "Aufgaben"/"Alle" sat flush against the card edge while
+   the Routinen card's head — inside `.habit-today`'s own full
+   `padding: var(--space-4)` — stayed indented (issue #1228). Scoped to this
+   surface alone: `.overview-block__head` elsewhere already gets its inline
+   inset from its own fully-padded container. */
+.task-list__surface > .overview-block__head {
+  padding-inline: var(--space-4);
+}
+
 /* Title + count, in that order (AK1: "Anzahl rechts"). A group without a
    header (the "Alle" view's one, anonymous group) simply omits this element —
    task-list.tsx only renders it when a group actually has a label. Carries its
