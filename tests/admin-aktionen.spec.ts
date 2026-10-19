@@ -124,7 +124,19 @@ test('AK4: Journal löschen braucht die doppelte Bestätigung und löscht journa
   await card.getByRole('button', { name: 'Ja, weiter' }).click();
 
   await expect(card.getByText(/nicht zurückgesetzt werden/)).toBeVisible();
-  await card.getByRole('button', { name: 'Journal endgültig löschen' }).click();
+  // `cancel()` revertiert die Bestätigungs-UI synchron, unabhängig vom
+  // DELETE-Fetch — die UI alleine ist hier kein verlässlicher Wartepunkt
+  // (Memory "diff-scope-decides-if-e2e-red-is-yours" lässt grüßen: ohne das
+  // Warten auf die echte Antwort liest die DB-Prüfung vor der Löschung).
+  const [deleteResponse] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/admin/accounts/${other.userId}/journal`) &&
+        response.request().method() === 'DELETE',
+    ),
+    card.getByRole('button', { name: 'Journal endgültig löschen' }).click(),
+  ]);
+  expect(deleteResponse.ok()).toBe(true);
 
   await expect(card.locator('.row', { hasText: 'Journal löschen' })).toBeVisible();
   expect(await tableCount('journal_entries', other.userId)).toBe(0);
