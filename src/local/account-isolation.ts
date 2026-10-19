@@ -99,6 +99,42 @@ export async function wipeLocalDatabase(nextAccountId?: string): Promise<void> {
   for (const hook of wipeHooks) hook();
 }
 
+/**
+ * "App sperren" (AK4/AK7, #1201) — unlike `wipeLocalDatabase()`, this keeps the
+ * outbox and the `accountId` marker. A full wipe would silently drop a
+ * not-yet-pushed mutation whenever the best-effort `sync()` ahead of it
+ * (`session-panel.tsx`) fails to land in time — locking the device is not the
+ * same as abandoning unsynced work (AC7, #756: a device must never silently
+ * discard local work on lock/logout). Everything a second person *could* see
+ * is still cleared: `records`, `weather`, the journal session/stash, `.ics`
+ * subscriptions, and every other `meta` key — in particular the pull cursor,
+ * so the next login still runs a full pull from 0 (AK4), not a resume from
+ * wherever this account's last pull left off.
+ *
+ * Accepted, not eliminated, residual risk: the outbox's payloads (cleartext —
+ * journal entries are the one exception, already encrypted before they ever
+ * reach the outbox) stay in IndexedDB, readable via DevTools, until the next
+ * account check wipes them for real (`ensureAccountChecked`'s mismatch path
+ * above, still a full `wipeLocalDatabase()`).
+ */
+export async function lockLocalDatabase(): Promise<void> {
+  const accountId = await getMeta<string>(META_ACCOUNT_ID);
+  await db.transaction(
+    'rw',
+    [db.records, db.meta, db.weather, db.journalSession, db.journalKeyStash, db.icsSubscriptions],
+    async () => {
+      await db.records.clear();
+      await db.meta.clear();
+      await db.weather.clear();
+      await db.journalSession.clear();
+      await db.journalKeyStash.clear();
+      await db.icsSubscriptions.clear();
+      if (accountId) await setMeta(META_ACCOUNT_ID, accountId);
+    },
+  );
+  for (const hook of wipeHooks) hook();
+}
+
 async function check(): Promise<AccountCheckResult> {
   let response: Response;
   try {

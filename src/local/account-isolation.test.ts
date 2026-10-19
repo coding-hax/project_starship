@@ -207,6 +207,36 @@ describe('wipeLocalDatabase', () => {
   });
 });
 
+describe('lockLocalDatabase', () => {
+  it('keeps the outbox and restamps the account marker, clears everything else', async () => {
+    getMetaMock.mockResolvedValue('a');
+    const { lockLocalDatabase, registerWipeHook } = await import('./account-isolation');
+    const hook = vi.fn();
+    registerWipeHook(hook);
+
+    await lockLocalDatabase();
+
+    expect(clearMocks.records).toHaveBeenCalled();
+    expect(clearMocks.meta).toHaveBeenCalled();
+    expect(clearMocks.weather).toHaveBeenCalled();
+    expect(clearMocks.journalSession).toHaveBeenCalled();
+    expect(clearMocks.journalKeyStash).toHaveBeenCalled();
+    expect(clearMocks.icsSubscriptions).toHaveBeenCalled();
+    expect(clearMocks.outbox).not.toHaveBeenCalled();
+    expect(setMetaMock).toHaveBeenCalledWith('accountId', 'a');
+    expect(hook).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not restamp a marker when none was set', async () => {
+    getMetaMock.mockResolvedValue(undefined);
+    const { lockLocalDatabase } = await import('./account-isolation');
+
+    await lockLocalDatabase();
+
+    expect(setMetaMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('resetAccountCheck', () => {
   it('drops the cached result and the blocked flag', async () => {
     vi.stubGlobal(

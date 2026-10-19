@@ -5,7 +5,7 @@ import { Row } from '@/ui/row';
 import { SectionCard } from '@/ui/section-card';
 import { useOnline } from '@/ui/use-online';
 import { journalLock } from '@/features/journal/lock-store';
-import { wipeLocalDatabase } from '@/local/account-isolation';
+import { lockLocalDatabase } from '@/local/account-isolation';
 import { sync } from '@/local/sync';
 import { useSessions } from './use-sessions';
 import './session-panel.css';
@@ -19,16 +19,18 @@ export function SessionPanel() {
 
   async function lock() {
     setLockBusy(true);
-    // A last chance for the outbox to reach the server before the wipe below
-    // discards it unread — locking the device is not the same as abandoning
-    // unsynced work. Best-effort: offline, this just fails fast and falls
-    // through to the wipe regardless (AK7, #1201), same as it always did.
+    // A last chance for the outbox to reach the server before the wipe below —
+    // not required for correctness (the wipe keeps the outbox either way, see
+    // below), just lets the next device see this work sooner. Best-effort:
+    // offline, this just fails fast and falls through regardless (AK7, #1201).
     await sync().catch(() => {});
     // Local and network-independent (AK7, #1201) — the wipe must not wait on a
     // request that may never complete offline. The server-side session destroy
     // is best-effort too: it either lands now, or the session simply expires
     // later, same as any other stale cookie (sync.ts's own 401 path wipes again).
-    await wipeLocalDatabase();
+    // Keeps the outbox and account marker — see `lockLocalDatabase()` for why: a
+    // failed best-effort sync() above must not cost a not-yet-pushed mutation.
+    await lockLocalDatabase();
     await journalLock();
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
