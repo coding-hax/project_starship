@@ -19,6 +19,7 @@
     "format:check": "prettier --check .",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
+    "bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down"
   },

@@ -16,6 +16,7 @@
 - `claude-hooks/pre-bash-guard.mjs` / `claude-hooks/stop-guard.sh` — sperrt --edit-last, Haupt-Checkout, pnpm i; Ende erst gepusht
 - `starship-runner` — Shim, den launchd/systemd startet
 - `bootstrap-github.sh` / `vercel-build.sh` / `smoke-decide.sh` — Setup, Migration, Post-Deploy-Smoke
+- `bootstrap-admin.ts` — einmaliger Admin + erster Einladungs-Link (`pnpm bootstrap-admin`)
 - `{launchd,systemd}-setup.md` / `gen-slot-plists.sh` — Runner als Dienst je Slot
 
 ## .github/workflows/

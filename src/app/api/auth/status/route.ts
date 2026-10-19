@@ -3,7 +3,8 @@ import { getSession } from '@/auth/session';
 import { hasAnyCredential } from '@/auth/webauthn';
 
 /**
- * Lets the client decide between "first setup" and "log in". Leaks nothing useful:
+ * Lets `/anmelden` decide between "no invite redeemed yet" and "log in" (#1202,
+ * S3 — registration itself no longer opens here). Leaks nothing useful:
  * `registered` is a yes/no about the installation, and `userId`/`blocked` only
  * appear once the caller already holds a valid session for that account.
  *

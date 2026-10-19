@@ -134,6 +134,59 @@ export async function createRegistrationCredential(
  * only use it when nothing between here and that `goto` touches the document; callers that
  * reach for `window.__starship` first need a loaded page and must keep a target.
  */
+/**
+ * Seeds an invite row directly (mirrors `createInvite`/`scripts/bootstrap-admin.ts`
+ * without going through the CLI or an HTTP route — issuing invites otherwise needs
+ * an authenticated admin endpoint this ticket does not add). Returns the plaintext
+ * token for `/einladung/<token>`; the database only ever sees its hash, same
+ * discipline as the real thing.
+ */
+export async function seedInvite({
+  createdBy,
+  userId = null,
+  label = null,
+  expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+}: {
+  createdBy: string;
+  userId?: string | null;
+  label?: string | null;
+  expiresAt?: Date;
+}): Promise<string> {
+  const token = randomBytes(32).toString('base64url');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+
+  await withDb((client) =>
+    client.query(
+      `INSERT INTO invites (id, token_hash, created_by, label, user_id, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [randomUUID(), tokenHash, createdBy, label, userId, expiresAt],
+    ),
+  );
+
+  return token;
+}
+
+/**
+ * Seeds a fresh admin account plus an invite bound to it — the same shape
+ * `scripts/bootstrap-admin.ts` produces, direct-inserted for test speed
+ * (mirrors `seedRecoveryCode` in auth-recovery-register.spec.ts).
+ */
+export async function seedBootstrapInvite(): Promise<string> {
+  const adminId = randomUUID();
+  await withDb((client) =>
+    client.query("INSERT INTO users (id, role, display_name) VALUES ($1, 'admin', 'Admin')", [
+      adminId,
+    ]),
+  );
+  return seedInvite({ createdBy: adminId, userId: adminId, label: 'Admin-Bootstrap' });
+}
+
+/**
+ * Registration since #1202 (S3) only ever opens through an invite link — there is
+ * no more "Passkey einrichten" button on an empty installation. `seedBootstrapInvite`
+ * stands in for `scripts/bootstrap-admin.ts` so every call here doesn't also pay for
+ * spinning up that CLI.
+ */
 export async function registerPasskey(page: Page, target: string | null = '/uebersicht') {
   const authenticated = await page.request
     .get('/api/auth/status')
@@ -148,7 +201,8 @@ export async function registerPasskey(page: Page, target: string | null = '/uebe
 
   await enableVirtualAuthenticator(page);
 
-  await page.goto('/anmelden');
+  const token = await seedBootstrapInvite();
+  await page.goto(`/einladung/${token}`);
   await page.getByRole('button', { name: 'Passkey einrichten' }).click();
 
   // Shown exactly once. If this ever stops appearing, recovery is silently broken.

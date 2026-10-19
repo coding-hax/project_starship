@@ -10,6 +10,7 @@ import {
   currentAccountId,
   enableVirtualAuthenticator,
   resetAppData,
+  seedInvite,
   sessionRowExists,
   withDb,
 } from './helpers';
@@ -423,13 +424,18 @@ test.describe('#1102: Anmeldungen je (Passkey, Gerät) (destruktiv, frischer Con
    * #857 block above does it by hand).
    */
   async function registerFreshDevice(browser: Browser) {
+    // Credential-less no longer opens registration on its own (#1202, AK5) — an
+    // invite pre-bound to the still-existing admin account stands in for "lost
+    // every device", same shape `scripts/bootstrap-admin.ts` produces.
+    const adminId = await currentAccountId();
     await deleteAllCredentials();
     await deleteAllSessions();
+    const token = await seedInvite({ createdBy: adminId, userId: adminId });
     const context = await browser.newContext();
     const page = await context.newPage();
     await enableVirtualAuthenticator(page);
 
-    await page.goto('/anmelden');
+    await page.goto(`/einladung/${token}`);
     await page.getByRole('button', { name: 'Passkey einrichten' }).click();
     await page.getByTestId('recovery-code').waitFor();
     await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();

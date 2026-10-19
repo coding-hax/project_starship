@@ -76,8 +76,9 @@ test('AK3: ein Recovery-Fehlversuch zaehlt gegen ein eigenes, strengeres Budget 
   page,
   browser,
 }) => {
-  // firstSetup=false is what makes a wrong recovery code answer 403 rather than
-  // silently allowing an unauthenticated first-time registration.
+  // An account already exists (via `registerPasskey`'s invite ceremony), so a wrong
+  // recovery code falls straight through the AK5 gate to 403, never silently opens
+  // registration.
   await registerPasskey(page);
 
   // A logged-out "device" — recovery is exercised without a session, same
