@@ -460,13 +460,16 @@ run_round() {
     return "$(printf '%s' "$plan" | jq -r '.rc // 0')"
   fi
 
-  local model tools resume role issue run_cwd denyTools used_resume guard_out
+  local model tools resume role issue run_cwd denyTools toolSet used_resume guard_out
   model=$(printf '%s' "$plan" | jq -r '.model')
   tools=$(printf '%s' "$plan" | jq -r '.tools')
   resume=$(printf '%s' "$plan" | jq -r '.resume')
   role=$(printf '%s' "$plan" | jq -r '.role')
   issue=$(printf '%s' "$plan" | jq -r '.issue')
   denyTools=$(printf '%s' "$plan" | jq -r '.denyTools')
+  # #1218: '// empty' turns a missing field into '' -- and '' must never reach
+  # --tools, because `--tools ""` removes every tool.
+  toolSet=$(printf '%s' "$plan" | jq -r '.toolSet // empty')
   # #839: nur fuer role=check befuellt. '// empty' liefert bei fehlendem Feld
   # (aeltere plan-JSON) und bei JSON-null denselben leeren String -- KEIN
   # nachgeschobenes '[ ... ] && ...', das waere unter 'set -e' ein Abbruch,
@@ -525,8 +528,15 @@ run_round() {
   # base_args OHNE --resume (#356, B): der Frischversuch weiter unten braucht
   # exakt dieselben Argumente minus --resume -- getrennt halten statt aus
   # 'args' herauszufiltern.
-  local -a base_args=(-p --output-format json --model "$model" --allowedTools "$tools")
+  #
+  # #1218: --tools caps the tool definitions to the role's set (the allowlist
+  # only grants permissions). --strict-mcp-config keeps the claude.ai
+  # connectors out: they arrive mid-run and rewrite the whole prompt cache.
+  # Both go behind '-p --output-format json', the prefix the supervisor
+  # matches processes on.
+  local -a base_args=(-p --output-format json --model "$model" --allowedTools "$tools" --strict-mcp-config)
   [ -n "$denyTools" ] && [ "$denyTools" != "null" ] && base_args+=(--disallowedTools "$denyTools")
+  if [ -n "$toolSet" ]; then base_args+=(--tools "$toolSet"); fi
 
   local -a args=("${base_args[@]}")
   used_resume=0

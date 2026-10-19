@@ -18,9 +18,8 @@ import { TaskList, TaskViewSwitcher, type ViewMode } from './task-list';
  *
  * The move is structural, not just CSS `order` (unlike the rest of #1117):
  * `PageHead` only renders `.page-head__extra` at all when its `extra` prop is
- * given, and the pre-existing `seitenkopf.spec.ts` AK2 (#868) asserts that
- * wrapper has zero count on `/aufgaben` below the breakpoint — issue #1117's
- * own AK6 requires that spec stay green untouched. So `useMinWidth` decides
+ * given, and #868 AK2 requires that wrapper to be absent on `/aufgaben` below
+ * the breakpoint. So `useMinWidth` decides
  * in JS which single spot the switcher actually mounts in, instead of
  * rendering it twice and hiding one copy with CSS (`display: none` would
  * still leave the node in the DOM and fail that count).

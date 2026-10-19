@@ -3,6 +3,12 @@
 Die Regel steht in `CLAUDE.md`, Abschnitt „Bevor du anfängst". Hier steht, was
 passiert, wenn man sie bricht — beides ist wirklich passiert.
 
+Seit #1214 erzwingt das ein Hook (`scripts/claude-hooks/pre-bash-guard.mjs`):
+`git commit`/`push`/`checkout`/`switch`/`merge`/`rebase`/`cherry-pick`/`revert`
+im Haupt-Checkout und `pnpm install` ohne `--dir` aus einem Worktree werden
+blockiert, bevor sie laufen. Er sieht nur, was Claude als Befehlszeile
+absetzt — ein Skript, das intern committet, rutscht durch.
+
 ## Der Vorfall #196 (26.07.26): ein HEAD, mehrere Läufe
 
 Es arbeiten mehrere Läufe gleichzeitig im selben Repo: der Runner mit seinen

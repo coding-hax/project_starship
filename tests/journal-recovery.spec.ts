@@ -49,18 +49,6 @@ async function journalKeysRow() {
   return result.rows[0] as { envelope: unknown; recovery_envelope: unknown } | undefined;
 }
 
-test('AC1: Ersteinrichtung erzeugt beide KEK-Wraps', async ({ page }) => {
-  await setUpJournal(page, PASSPHRASE);
-
-  await page.evaluate(() => window.__starship.sync());
-  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
-
-  const row = await journalKeysRow();
-  expect(row).toBeDefined();
-  expect(row!.envelope).not.toBeNull();
-  expect(row!.recovery_envelope).not.toBeNull();
-});
-
 test('AC2: Recovery-Key wird genau einmal angezeigt, gruppiert, erst nach Bestaetigung geht es weiter', async ({
   page,
 }) => {
@@ -86,20 +74,6 @@ test('AC2: Recovery-Key wird genau einmal angezeigt, gruppiert, erst nach Bestae
   await page.reload();
   await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
   await expect(page.getByTestId('journal-recovery-key')).toHaveCount(0);
-});
-
-test('AC3: zweiter Weg entsperrt mit dem korrekten Recovery-Key', async ({ page }) => {
-  const recoveryKey = await setUpJournal(page, PASSPHRASE);
-  await page.reload();
-  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
-
-  await page.getByRole('button', { name: 'Mit Wiederherstellungsschlüssel entsperren' }).click();
-  await page.getByLabel('Wiederherstellungsschlüssel').fill(recoveryKey);
-  await page.getByRole('button', { name: 'Entsperren', exact: true }).click();
-
-  await expect
-    .poll(() => page.evaluate(() => window.__starship.journalLockState()))
-    .toBe('unlocked');
 });
 
 test('AC4: nach Recovery-Unlock kann eine neue Passphrase gesetzt werden, der DEK bleibt gleich', async ({
@@ -184,16 +158,6 @@ test('AC5: falscher Recovery-Key ist von einer falschen Passphrase nicht zu unte
 
   expect(await recoveryMessage.textContent()).toBe(passphraseText);
   await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
-});
-
-test('AC6: Warnsatz im Einrichten-Screen verweist auf den gleich angezeigten Key', async ({
-  page,
-}) => {
-  await registerPasskey(page, '/journal');
-
-  const setupForm = page.locator('.journal-gate[data-state="setup"]');
-  await expect(setupForm).toContainText('Wiederherstellungsschlüssel');
-  await expect(setupForm).not.toContainText('es gibt noch keine Wiederherstellung');
 });
 
 test('Offline (DoD): Ersteinrichtung offline schreibt lokal, sync bringt beide Huellen online an', async ({

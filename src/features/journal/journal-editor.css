@@ -69,7 +69,7 @@
    rule above resets all three to the fixed `-base` tones tuned for a real
    `--surface` background, but this variant has `background: none` and sits
    directly on the route ground, where those fixed tones fall to 1.74:1
-   (border, grundfarbe.spec.ts AK1) resp. 1.14:1/1.80:1 (ink, issue #1063). */
+   (border) resp. 1.14:1/1.80:1 (ink, issue #1063). */
 .journal-day-card--empty {
   align-items: stretch;
   min-height: var(--touch-target);

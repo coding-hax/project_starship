@@ -52,17 +52,6 @@ async function insertHabit(overrides: {
   return id;
 }
 
-async function insertHabitLog(habitId: string, logDate: string, done = true): Promise<void> {
-  const userId = await currentAccountId();
-  await withDb((client) =>
-    client.query(
-      `INSERT INTO habit_logs (user_id, id, updated_at, deleted_at, synced_at, sync_seq, habit_id, log_date, done)
-       VALUES ($5, $1, now(), NULL, now(), nextval('sync_seq'), $2, $3, $4)`,
-      [randomUUID(), habitId, logDate, done, userId],
-    ),
-  );
-}
-
 async function insertEvent(overrides: {
   title?: string;
   allDay?: boolean;
@@ -225,34 +214,6 @@ test.describe('tasks-due', () => {
     expect(body.sent).toContain('tasks-due');
     expect(await reminderSendRows('tasks-due')).toHaveLength(1);
   });
-
-  test('ohne fällige Aufgabe kommt keine Benachrichtigung (AC2)', async ({ request }) => {
-    const response = await request.post('/api/push/reminders', { headers: AT_0705_BERLIN });
-    const body = await response.json();
-
-    expect(body.sent).not.toContain('tasks-due');
-    expect(body.skipped).toContain('tasks-due');
-    expect(await reminderSendRows('tasks-due')).toHaveLength(0);
-  });
-
-  test('erledigte und gelöschte Aufgaben lösen nichts aus (AC3)', async ({ request }) => {
-    await insertTask({ title: 'Erledigt', dueAt: '2026-07-20T18:00:00.000Z', completedAt: '2026-07-20T09:00:00.000Z' });
-    await insertTask({ title: 'Gelöscht', dueAt: '2026-07-20T18:00:00.000Z', deletedAt: '2026-07-20T09:00:00.000Z' });
-
-    const response = await request.post('/api/push/reminders', { headers: AT_0705_BERLIN });
-    const body = await response.json();
-
-    expect(body.sent).not.toContain('tasks-due');
-  });
-
-  test('eine überfällige Aufgabe löst trotzdem aus (AC3)', async ({ request }) => {
-    await insertTask({ title: 'Überfällig', dueAt: '2026-07-15T09:00:00.000Z' });
-
-    const response = await request.post('/api/push/reminders', { headers: AT_0705_BERLIN });
-    const body = await response.json();
-
-    expect(body.sent).toContain('tasks-due');
-  });
 });
 
 /**
@@ -280,111 +241,6 @@ test.describe('habits-open', () => {
     expect(body.sent).toContain('habits-open');
     expect(await reminderSendRows('habits-open')).toHaveLength(1);
   });
-
-  test('ist alles abgehakt, kommt keine Benachrichtigung (AC2)', async ({ request }) => {
-    const habitId = await insertHabit({ name: 'Laufen' });
-    await insertHabitLog(habitId, '2026-07-15');
-
-    const response = await request.post('/api/push/reminders', { headers: AT_2005_BERLIN });
-    const body = await response.json();
-
-    expect(body.sent).not.toContain('habits-open');
-    expect(body.skipped).toContain('habits-open');
-  });
-
-  test('eine wöchentliche Routine, diese Woche schon erledigt, gilt nicht als offen (AC3)', async ({
-    request,
-  }) => {
-    const habitId = await insertHabit({ name: 'Wocheneinkauf', schedule: 'weekly' });
-    await insertHabitLog(habitId, '2026-07-13'); // Monday — same Mon–Sun week, not today
-
-    const response = await request.post('/api/push/reminders', { headers: AT_2005_BERLIN });
-    const body = await response.json();
-
-    expect(body.sent).not.toContain('habits-open');
-  });
-
-  test('archivierte Routinen erscheinen nie (AC4)', async ({ request }) => {
-    await insertHabit({ name: 'Alte Routine', archivedAt: '2026-06-01T00:00:00.000Z' });
-
-    const response = await request.post('/api/push/reminders', { headers: AT_2005_BERLIN });
-    const body = await response.json();
-
-    expect(body.sent).not.toContain('habits-open');
-  });
-
-  /**
-   * Owner-Entscheidung 2 (issue #509, AC6): the reminder only mentions a habit
-   * once its period is actually running out — a weekly habit stays silent on
-   * Wednesday no matter what, and only speaks up on the last day of its week.
-   */
-  const AT_2005_BERLIN_LAST_DAY_OF_WEEK = { 'x-e2e-now': '2026-07-19T18:05:00.000Z' }; // Sunday 20:05 CEST
-
-  test('eine offene wöchentliche Routine bleibt vor dem letzten Tag der Woche still (issue #509)', async ({
-    request,
-  }) => {
-    await insertHabit({ name: 'Wocheneinkauf', schedule: 'weekly' });
-
-    // AT_2005_BERLIN is Wednesday — the week only ends on Sunday.
-    const response = await request.post('/api/push/reminders', { headers: AT_2005_BERLIN });
-    const body = await response.json();
-
-    expect(body.sent).not.toContain('habits-open');
-  });
-
-  test('eine offene wöchentliche Routine meldet sich am letzten Tag der Woche (issue #509)', async ({
-    request,
-  }) => {
-    await insertHabit({ name: 'Wocheneinkauf', schedule: 'weekly' });
-
-    const response = await request.post('/api/push/reminders', {
-      headers: AT_2005_BERLIN_LAST_DAY_OF_WEEK,
-    });
-    const body = await response.json();
-
-    expect(body.sent).toContain('habits-open');
-  });
-
-  test('eine „3x pro Woche"-Routine mit 2 von 3 gilt am letzten Tag der Woche noch als offen (issue #509)', async ({
-    request,
-  }) => {
-    const habitId = await insertHabit({ name: 'Krafttraining', schedule: 'weekly', target: 3 });
-    await insertHabitLog(habitId, '2026-07-13');
-    await insertHabitLog(habitId, '2026-07-14');
-
-    const response = await request.post('/api/push/reminders', {
-      headers: AT_2005_BERLIN_LAST_DAY_OF_WEEK,
-    });
-    const body = await response.json();
-
-    expect(body.sent).toContain('habits-open');
-  });
-
-  test('eine jährliche Routine bleibt still, wenn mehr als 7 Tage bis Jahresende bleiben (issue #509 AC6)', async ({
-    request,
-  }) => {
-    await insertHabit({ name: 'Testament prüfen', schedule: 'yearly' });
-
-    const response = await request.post('/api/push/reminders', {
-      headers: { 'x-e2e-now': '2026-12-01T19:05:00.000Z' }, // 20:05 CET, 30 Tage bis Jahresende
-    });
-    const body = await response.json();
-
-    expect(body.sent).not.toContain('habits-open');
-  });
-
-  test('eine jährliche Routine meldet sich innerhalb der letzten 7 Tage des Jahres (issue #509 AC6)', async ({
-    request,
-  }) => {
-    await insertHabit({ name: 'Testament prüfen', schedule: 'yearly' });
-
-    const response = await request.post('/api/push/reminders', {
-      headers: { 'x-e2e-now': '2026-12-28T19:05:00.000Z' }, // 20:05 CET, 3 Tage bis Jahresende
-    });
-    const body = await response.json();
-
-    expect(body.sent).toContain('habits-open');
-  });
 });
 
 /**
@@ -406,18 +262,6 @@ test.describe('interaction-limit', () => {
     expect(body.sent).toContain('interaction-limit');
     expect(await reminderSendRows('interaction-limit')).toHaveLength(1);
   });
-
-  test('mehr als 30 Tage bis zum Ablauf lösen keine Erinnerung aus (AC2)', async ({ request }) => {
-    // ~180 Tage vor Ablauf, 09:05 CEST
-    const response = await request.post('/api/push/reminders', {
-      headers: { 'x-e2e-now': '2026-07-20T07:05:00.000Z' },
-    });
-    const body = await response.json();
-
-    expect(body.sent).not.toContain('interaction-limit');
-    expect(body.skipped).toContain('interaction-limit');
-    expect(await reminderSendRows('interaction-limit')).toHaveLength(0);
-  });
 });
 
 /**
@@ -428,16 +272,6 @@ test.describe('interaction-limit', () => {
  * `tests/reminder-prefs.spec.ts`; this suite only proves the cron reads them.
  */
 test.describe('reminder_prefs (e2e-smoke)', () => {
-  test('abgeschaltete Art bleibt still, auch wenn ihre Zeit vergangen ist (AC1)', async ({ request }) => {
-    await seedReminderPref('e2e-smoke', false, ['00:00']);
-
-    const response = await request.post('/api/push/reminders');
-    const body = await response.json();
-
-    expect(body.sent).not.toContain('e2e-smoke');
-    expect(await reminderSendRows('e2e-smoke')).toHaveLength(0);
-  });
-
   test('eine geänderte Uhrzeit wirkt auf den Versand (AC2)', async ({ request }) => {
     await seedReminderPref('e2e-smoke', true, ['23:00']);
 
@@ -466,18 +300,6 @@ test.describe('reminder_prefs (e2e-smoke)', () => {
     expect((body.sent as string[]).filter((kind) => kind === 'e2e-smoke')).toHaveLength(2);
     expect(await reminderSendRows('e2e-smoke')).toHaveLength(2);
   });
-
-  test('werden alle Zeiten entfernt, kommt nichts — die Standardzeit kehrt nicht zurück (AC4)', async ({
-    request,
-  }) => {
-    await seedReminderPref('e2e-smoke', true, []);
-
-    const response = await request.post('/api/push/reminders');
-    const body = await response.json();
-
-    expect(body.sent).not.toContain('e2e-smoke');
-    expect(await reminderSendRows('e2e-smoke')).toHaveLength(0);
-  });
 });
 
 /**
@@ -503,24 +325,6 @@ test.describe('event-reminder', () => {
     const body = await response.json();
 
     expect(body.sent).toContain('event-reminder');
-    expect(await reminderSendRows('event-reminder')).toHaveLength(1);
-  });
-
-  test('ein zweiter Auslöser am selben Fenster stellt nicht doppelt zu (AC3)', async ({ request }) => {
-    await insertEvent({
-      title: 'Zahnarzt',
-      startsAt: '2026-07-20T12:00:00.000Z',
-      endsAt: '2026-07-20T12:30:00.000Z',
-      reminderMinutes: 15,
-    });
-    const headers = { 'x-e2e-now': '2026-07-20T11:45:00.000Z' };
-
-    await request.post('/api/push/reminders', { headers });
-    const second = await request.post('/api/push/reminders', { headers });
-    const body = await second.json();
-
-    expect(body.sent).not.toContain('event-reminder');
-    expect(body.skipped).toContain('event-reminder');
     expect(await reminderSendRows('event-reminder')).toHaveLength(1);
   });
 
@@ -554,23 +358,5 @@ test.describe('event-reminder', () => {
     );
     expect(rows.rows).toHaveLength(1);
     expect(rows.rows[0].slot).toBe(`${eventId}:2026-07-27`);
-  });
-
-  test('ein ausgefallenes Serien-Vorkommen löst keine Erinnerung aus (AC4)', async ({ request }) => {
-    const eventId = await insertEvent({
-      title: 'Wöchentliches Meeting',
-      startsAt: '2026-07-20T07:00:00.000Z',
-      endsAt: '2026-07-20T07:30:00.000Z',
-      recurrence: { freq: 'weekly', interval: 1, byWeekday: [0] },
-      reminderMinutes: 15,
-    });
-    await insertEventException(eventId, { originalDate: '2026-07-27', cancelled: true });
-
-    const response = await request.post('/api/push/reminders', {
-      headers: { 'x-e2e-now': '2026-07-27T06:45:00.000Z' },
-    });
-    const body = await response.json();
-
-    expect(body.sent).not.toContain('event-reminder');
   });
 });

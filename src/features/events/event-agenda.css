@@ -217,9 +217,9 @@
    selbst bei ≥1440px höchstens 400px schmal bleibt — eine gestapelte Karte
    passt dort besser als vier Grid-Spalten. Beide Bedingungen müssen im
    selben `@media`-Block stehen (nicht nur per `:not(:has())` gescopet):
-   die Woche zeigt `.event-agenda` auch unter 1440px (AK7, kalender.desktop/
-   .spec.ts) — ohne die Breitenklammer griffe die vierspaltige Zeile dort
-   auch schon bei 375/1280px. */
+   die Woche zeigt `.event-agenda` auch unter 1440px (AK7) — ohne die
+   Breitenklammer griffe die vierspaltige Zeile dort auch schon bei
+   375/1280px. */
 @media (min-width: 1440px) {
   .calendar-view:not(:has(> .month-grid)) .event-agenda__item-button {
     grid-template-columns: auto auto 1fr auto;

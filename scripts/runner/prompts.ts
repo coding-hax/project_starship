@@ -323,6 +323,25 @@ kleinste, der die Richtung belegt, ohne eine dieser Festlegungen zu
 verbauen. Nenn ausdrücklich, was drin ist und was bewusst vertagt wird —
 „was ist drin" und „was ist ausdrücklich vertagt".`;
 
+// #1213: `--edit-last` bearbeitet "the last comment of the current user" --
+// und jeder Lauf kommentiert unter demselben Konto, unter dem der Mensch
+// antwortet. Nach einer Antwort ist das also SEINE, und der Plan ersetzte sie
+// lautlos. Die Denk-Rollen haben `Write` und `Bash(gh:*)` (round.ts), sie
+// ersetzen ihren eigenen Kommentar deshalb ueber dessen ID. Grosses `-F`:
+// mit `-f body=@datei` postet gh den Pfad als Text.
+function ownCommentRule(issue: number, marker: string): string {
+  return `   So schreibst du ihn — **nie** mit '--edit-last': das trifft den neuesten
+   Kommentar des Kontos, und nach einer Antwort ist das die des Menschen.
+   - Erster Kommentar: den Text mit \`Write\` in eine Datei im
+     Arbeitsverzeichnis schreiben, dann \`gh issue comment ${issue} --body-file <pfad>\`.
+   - Fortsetzung: die ID deines Kommentars über den Marker „${marker}"
+     holen (bei mehreren die letzte):
+     \`gh api --paginate repos/{owner}/{repo}/issues/${issue}/comments --jq '.[] | select(.body | contains("${marker}")) | .id'\`
+     Dann den vollständigen neuen Text mit \`Write\` in die Datei und
+     \`gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@<pfad>\`.
+     Großes \`-F\` — mit \`-f\` landet der Pfad als Text im Kommentar.`;
+}
+
 /**
  * RUN_ROLE=plan (ADR-0005). Nur lesend: kein Edit/Write, kein Branch, kein
  * Commit. Schreibt den Plan inkrementell in EINEN Kommentar und flippt
@@ -344,10 +363,15 @@ ${PLAN_REUSE_AND_COMMITMENT_RULE}
 2. Existiert bereits ein Plan-Kommentar mit „🧠 Plan (Opus) — Status: in
    Arbeit": **setze ihn fort** ab dem Marker „← HIER WEITER BEIM PLANEN",
    statt neu zu beginnen.
-3. Erstelle/ergänze in **einem** Kommentar (gh issue comment --edit-last)
+3. Erstelle/ergänze in **einem** Kommentar
    einen **dateiweisen** Umsetzungsplan: pro Datei was sich ändert, Testplan,
-   Risiko/Rückweg, Wiederaufnahmepunkte. Statuszeile oben: „🧠 Plan (Opus) —
+   Risiko/Rückweg, Wiederaufnahmepunkte. Der Testplan sieht je
+   Akzeptanzkriterium entweder einen E2E-Test vor — **nur** für Kriterien unter K1–K5
+   (ADR-0032, Kurzfassung aus #1210) — oder vermerkt es als
+   \`(prüft der Mensch am Gerät)\`; für Kriterien unter D1–D7 plant der
+   Testplan **keinen** E2E-Test. Statuszeile oben: „🧠 Plan (Opus) —
    Status: **in Arbeit**" + Marker „← HIER WEITER BEIM PLANEN: <Abschnitt>".
+${ownCommentRule(issue, '🧠 Plan (Opus) — Status:')}
 4. Brauchst du eine **menschliche Entscheidung** (nicht nur einen Plan):
    Statuszeile auf „Status: **wartet auf Entscheidung**", Label
    'needs-answer' setzen, beenden. Rate nie.
@@ -400,13 +424,14 @@ ${ARTIFACT_RULE}
 3. Existiert bereits ein Rechercheergebnis-Kommentar mit „🔎 Recherche — Status:
    in Arbeit": **setze ihn fort** ab dem Marker „← HIER WEITER BEI DER
    RECHERCHE", statt neu zu beginnen.
-4. Erstelle/ergänze in **einem** Kommentar (gh issue comment --edit-last) eine
+4. Erstelle/ergänze in **einem** Kommentar eine
    **Überlegung** auf Idee-/Feature-Ebene: Was ist es? Passt es zur Vision
    (auch: passt es *nicht* — das klar benennen, nicht eigenmächtig verwerfen)?
    2–3 Ansätze mit Trade-offs, Empfehlung, grober Scope. **Kein Code, keine
    dateiweise Umsetzung** — das ist der spätere Planer-Lauf (plan).
    Statuszeile oben: „🔎 Recherche — Status: **in Arbeit**" + Marker „← HIER
    WEITER BEI DER RECHERCHE: <Abschnitt>".
+${ownCommentRule(issue, '🔎 Recherche — Status:')}
 5. Ist die Überlegung **vollständig** (auch wenn das Ergebnis ein Widerspruch
    zur Vision ist): Statuszeile „Status: **fertig**", Marker entfernen, dann
    gh issue edit ${issue} --remove-label research --remove-label in-progress
@@ -458,14 +483,29 @@ ${list}
 3. Urteile **je Kriterium** und belege jedes Urteil:
    - **erfüllt** — im Diff (oder im vorhandenen Code) belegt UND ein Test hält
      es fest. Beleg: \`<pfad>:<zeile>\` und der Testname. Trägt das Ticket das
-     Label \`tests-exempt\`, entfällt der Testteil.
+     Label \`tests-exempt\`, entfällt der Testteil. Ebenso entfällt der
+     Testteil für ein einzelnes Kriterium, das mit
+     \`(prüft der Mensch am Gerät)\` gekennzeichnet ist (K-/D-Regeln aus
+     ADR-0032) — Code-Beleg genügt.
    - **nicht erfüllt** — fehlt, oder der Code sagt etwas anderes als das
      Kriterium. Beleg: die Stelle, an der es fehlt oder abweicht.
-   - **nicht prüfbar** — weder aus Diff noch aus Tests entscheidbar (z. B. rein
-     visuelle Zusagen ohne Messung). Sag in einem Satz, **was** fehlt, um es
-     prüfbar zu machen. Fürs Tor zählt das wie „nicht erfüllt" — aber der
-     Bau-Lauf weiß dann, dass ein Beleg fehlt, nicht Code.
+   - **nicht prüfbar** — weder aus Diff noch aus Tests entscheidbar. Ein mit
+     \`(prüft der Mensch am Gerät)\` markiertes optisches Kriterium ist
+     **nicht** automatisch nicht prüfbar — mit Code-Beleg ist es erfüllt; nur
+     ein **un**markiertes, rein visuelles Kriterium ohne jeden Beleg bleibt
+     nicht prüfbar (und ist ein Hinweis, dass das Ticket falsch geschnitten
+     ist). Sag in einem Satz, **was** fehlt, um es prüfbar zu machen. Fürs Tor
+     zählt das wie „nicht erfüllt" — aber der Bau-Lauf weiß dann, dass ein
+     Beleg fehlt, nicht Code.
    Rate nie. Ein unsicheres „wird schon" ist \`nicht prüfbar\`, nicht \`erfüllt\`.
+   Prüfe jedes Kriterium im **vollen Wortlaut** — jede Teilbedingung einer
+   „A **oder** B"-Formulierung einzeln. Die Spalte \`Kriterium (gekürzt)\` aus
+   Schritt 4 ist **nur Anzeige**, nie die Suchgrundlage: wer nach der
+   gekürzten Fassung sucht, findet nur die Hälfte (#1222). Tritt ein Befund
+   als **Muster** auf (z. B. „Kommentar zitiert einen gestrichenen Test/eine
+   gelöschte Spec" an mehreren Stellen), ist er erst mit der **vollständigen**
+   Liste aller Stellen (\`<pfad>:<zeile>\`) vollständig — nicht mit dem ersten
+   Treffer.
 4. **Schreib deinen Befund in jedem Ausgang zuerst — auch bei voller Erfüllung.**
    In **einen** Kommentar am Ticket, überschrieben mit \`## ✅ AK-Check\`, und zwar
    **vor jeder Label-Änderung und vor dem Merge**. Der Kommentar ist die
@@ -509,12 +549,20 @@ grünen Required Checks. **Kein** \`gh pr checks --watch\`.
   Tickets, mit Nummer und dem, was konkret fehlt — der Bau-Lauf liest dort
   weiter, nicht in deinem Prüfbericht.
 
-**Zweiter Check mit demselben Ergebnis** — stand schon vor deinem Lauf ein
-\`## ✅ AK-Check\`-Kommentar mit offenen Kriterien am Ticket, dann ist das hier
-der zweite vergebliche Anlauf: setze zusätzlich \`gh issue edit ${issue}
---add-label needs-answer\` und beende. Zwei Runden am selben Kriterium heißen,
-dass das Kriterium unklar ist — das entscheidet der Mensch, nicht eine dritte
-Runde.`;
+**Zweiter Check mit demselben offenen Kriterium** — stand im **unmittelbar
+vorausgegangenen** \`## ✅ AK-Check\`-Kommentar ein Kriterium unter derselben
+Nummer bereits offen, und findest du es auch heute offen, dann ist das hier
+der zweite vergebliche Anlauf an genau diesem Kriterium:
+dasselbe Kriterium in zwei aufeinanderfolgenden Runden offen. Ein Kriterium,
+das heute **neu** offen ist (in der Vorrunde noch nicht als offen stand),
+löst das **nicht** aus — das ist Normalbetrieb, kein zweiter Anlauf. Schreib
+in diesem Fall **vor** dem Label einen Kommentar ans Ticket mit konkreten
+Optionen (A/B …), deiner Empfehlung und dem, was passiert, wenn niemand
+antwortet — wie CLAUDE.md „Wenn du nicht weiterkommst" es vorschreibt. Erst
+danach setze zusätzlich \`gh issue edit ${issue} --add-label needs-answer\`
+und beende.
+Zwei Runden am selben Kriterium heißen, dass das Kriterium unklar ist — das
+entscheidet der Mensch, nicht eine dritte Runde.`;
 }
 
 // Werkzeug-Allowlist der Denk-Rollen (ADR-0005 + #63): praeventiv statt nur
@@ -551,3 +599,15 @@ export const CHECK_TOOLS = `${READONLY_TOOLS},Bash(git fetch:*)`;
 // aber in 2.1.202 weder ueber --allowedTools noch ueber --disallowedTools noch
 // ueber --settings -- geprueft, alle drei Wege ignorieren den Pfadteil.
 export const READONLY_DENY = 'Edit';
+
+// #1218: the value for `--tools` -- which tool definitions a run gets at all.
+// The allowlists above only grant permissions; without `--tools` every run
+// carries the full default set (~20k tokens of definitions plus the skills
+// listing) on every request. Derived from the allowlist, so a newly granted
+// tool can never be missing from the run. `extra` names tools a role uses
+// that need no permission (`Agent`, `Skill`). `--tools` caps subagents too:
+// round.test.ts checks every agent under .claude/agents/ against the sets.
+export function deriveToolSet(allowlist: string, extra: readonly string[]): string {
+  const names = [...allowlist.matchAll(/([^,(]+)(?:\([^)]*\))?/g)].map((m) => m[1].trim());
+  return [...new Set([...names, ...extra])].filter((name) => name !== '').join(',');
+}

@@ -76,11 +76,39 @@ Code *und* einen Test (außer bei `tests-exempt`). `nicht prüfbar` ist ein
 eigener Befund und zählt fürs Tor wie `nicht erfüllt` — er sagt dem nächsten
 Bau-Lauf, dass ein Beleg fehlt, nicht Code.
 
+> **Nachtrag #1215 — Optik-Kriterien brauchen keinen Test.** `erfüllt`
+> verlangt Code **und** Test, außer bei `tests-exempt` (ticketweit) **oder**
+> bei einem Kriterium, das mit `(prüft der Mensch am Gerät)` markiert ist
+> (K-/D-Regeln: [ADR-0032](0032-e2e-pflicht-nach-k-regeln.md)). Für ein so
+> markiertes Kriterium genügt der Code-Beleg allein. Der Marker befreit nur
+> vom Test, nicht vom Beleg: ein markiertes Kriterium ohne jede Code-Stelle
+> bleibt `nicht prüfbar`.
+
 **4. Bei einer Lücke geht das Ticket zurück in den Bau,** nicht an den
 Menschen: `check` fällt weg, `in-progress` bleibt, die offenen Punkte stehen im
 Fortschrittskommentar. Erst der **zweite** vergebliche Check endet mit
 `needs-answer` — zwei Runden am selben Kriterium heißen, dass das Kriterium
 unklar ist, und das entscheidet kein dritter Lauf.
+
+> **Nachtrag #1222 — „zweite Runde" heißt dasselbe Kriterium zweimal in Folge
+> offen, nicht irgendein offenes Kriterium.**
+> An #1210 widersprachen sich der Prompt-Wortlaut („ein Kommentar mit offenen
+> Kriterien") und dieser Punkt 4 („zwei Runden am selben Kriterium"): nach dem
+> Prompt hätte schon die zweite Check-Runde `needs-answer` setzen müssen, nach
+> diesem Punkt erst die, in der **dasselbe** Kriterium zum zweiten Mal in Folge
+> offen blieb. Tatsächlich feuerte keine der beiden, sondern erst eine vierte
+> Runde — weil die Vorrunden dasselbe Kriterium nur zur Hälfte geprüft hatten
+> (siehe unten) und der Prüfer das nicht als denselben Befund wiedererkannte.
+> Klargestellt gilt ab jetzt wortgleich in Prompt und ADR: `needs-answer` nur,
+> wenn ein Kriterium, das der aktuelle Check offen findet, bereits im
+> **unmittelbar vorausgegangenen** `## ✅ AK-Check`-Kommentar unter derselben
+> Nummer offen stand — dasselbe Kriterium in zwei aufeinanderfolgenden Runden offen.
+> Ein neu aufgetauchtes offenes Kriterium ist Normalbetrieb, kein zweiter
+> Anlauf. Außerdem trägt ein `needs-answer` aus diesem Zweig ab jetzt immer
+> einen Kommentar mit konkreten Optionen (A/B …), einer Empfehlung und dem,
+> was ohne Antwort passiert — Runde 4 an #1210 setzte das Label ohne eine
+> beantwortbare Frage, obwohl der Fix mechanisch war und schon im
+> Fortschrittskommentar stand.
 
 **5. Akzeptanzkriterien sind Pflicht.** `scripts/runner/ak.ts` liest sie
 mechanisch aus dem Ticket-Body. Findet es keine, startet kein Bau-Lauf: ein

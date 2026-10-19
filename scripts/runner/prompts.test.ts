@@ -3,6 +3,8 @@
 // aus den Bash-Heredocs (#203, S6) wortgleich uebernommen wurden -- gepruefte
 // Gleichheit gegen die alten Heredocs zum Portzeitpunkt, danach hier
 // festgenagelt.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   BUILD_TOOLS,
@@ -11,6 +13,7 @@ import {
   buildPrompt,
   checkPrompt,
   ciFixPrompt,
+  deriveToolSet,
   planPrompt,
   researchPrompt,
 } from './prompts.js';
@@ -245,6 +248,56 @@ describe('prompts', () => {
       expect(CHECK_TOOLS).not.toContain('Edit');
       expect(CHECK_TOOLS).not.toContain('Artifact');
     });
+
+    // #1215/ADR-0032: ein mit "(prueft der Mensch am Geraet)" markiertes
+    // Kriterium ist mit Code-Beleg erfuellt, auch ohne Test.
+    it('wertet ein mit "(prüft der Mensch am Gerät)" markiertes Kriterium ohne Test als erfüllt', () => {
+      expect(prompt).toContain('(prüft der Mensch am Gerät)');
+      expect(prompt).toContain('Code-Beleg genügt');
+      expect(prompt).toContain('ADR-0032');
+    });
+
+    it('bleibt bei einem unmarkierten, rein visuellen Kriterium ohne Beleg bei nicht prüfbar', () => {
+      expect(prompt).toContain('ein **un**markiertes, rein visuelles Kriterium ohne jeden Beleg bleibt');
+    });
+  });
+
+  // #1222: an #1210 widersprachen sich Prompt und ADR-0026 ueber die
+  // Ausloesebedingung der Zwei-Runden-Regel, der Pruefer durchsuchte nur die
+  // gekuerzte Kriteriumsspalte und meldete bei einem Muster-Fund nur den
+  // ersten Treffer, und die vierte Runde setzte needs-answer ohne Frage.
+  describe('AK-Check-Prompt: Zwei-Runden-Regel praezisiert (#1222)', () => {
+    const prompt = checkPrompt(42, ['A tut X', 'B bleibt Y'], 'feat/42-x');
+    const anchor = 'dasselbe Kriterium in zwei aufeinanderfolgenden Runden offen';
+
+    it('AK1: nennt die eindeutige Ausloesebedingung und nicht mehr die mehrdeutige', () => {
+      expect(prompt).toContain(anchor);
+      expect(prompt).not.toContain('mit offenen Kriterien');
+    });
+
+    it('AK1: ADR-0026 nennt denselben Kern-Wortlaut der Ausloesebedingung', () => {
+      const adr = readFileSync(
+        join(__dirname, '..', '..', 'docs', 'adr', '0026-ak-check-als-merge-tor.md'),
+        'utf-8',
+      );
+      expect(adr).toContain(anchor);
+    });
+
+    it('AK2: ein needs-answer aus diesem Zweig verlangt zuerst eine beantwortbare Frage', () => {
+      expect(prompt).toContain('Optionen (A/B …)');
+      expect(prompt).toContain('und dem, was passiert, wenn niemand\nantwortet');
+      expect(prompt.indexOf('Optionen (A/B …)')).toBeLessThan(prompt.indexOf('--add-label needs-answer'));
+    });
+
+    it('AK3: verlangt den vollen Wortlaut und erklaert die gekuerzte Spalte zur reinen Anzeige', () => {
+      expect(prompt).toContain('jedes Kriterium im **vollen Wortlaut**');
+      expect(prompt).toContain('**nur Anzeige**, nie die Suchgrundlage');
+    });
+
+    it('AK4: verlangt bei einem Muster-Fund die vollstaendige Trefferliste statt des ersten Treffers', () => {
+      expect(prompt).toContain('**vollständigen**\n   Liste aller Stellen');
+      expect(prompt).toContain('nicht mit dem ersten\n   Treffer');
+    });
   });
 
   // #901: der Pruefer hinterlaesst IMMER eine sichtbare Anmerkung -- auch wenn
@@ -409,6 +462,16 @@ describe('prompts', () => {
       expect(researchPrompt(7)).toContain('**Kein Code, keine\n   dateiweise Umsetzung**');
     });
 
+    // #1215/ADR-0032: der Testplan nimmt nur fuer K1-K5-Kriterien einen
+    // E2E-Test auf, D1-D7 markiert er als "(prueft der Mensch am Geraet)".
+    it('plant E2E-Tests nur fuer K1-K5-Kriterien, D1-D7 markiert er als "prüft der Mensch am Gerät"', () => {
+      const prompt = planPrompt(7);
+      expect(prompt).toContain('**nur** für Kriterien unter K1–K5');
+      expect(prompt).toContain('(prüft der Mensch am Gerät)');
+      expect(prompt).toContain('für Kriterien unter D1–D7 plant der\n   Testplan **keinen** E2E-Test');
+      expect(prompt).toContain('ADR-0032');
+    });
+
     // #326: #216 legte am 28.07.26 seine drei Bau-Tickets doppelt an -- der
     // Planer-Lauf prüfte vor 'gh issue create' nicht, ob sie schon existieren.
     it('verlangt eine Duplikat-Pruefung, bevor der Planer Folge-Tickets anlegt', () => {
@@ -451,6 +514,32 @@ describe('prompts', () => {
     // Bau-Rolle darf es nicht bekommen (AK4, Scope-Creep).
     it('nennt Artifact nicht in BUILD_TOOLS', () => {
       expect(BUILD_TOOLS.split(',')).not.toContain('Artifact');
+    });
+  });
+
+  // #1218: --tools takes tool names, the allowlists hold permission rules.
+  describe('deriveToolSet (#1218)', () => {
+    it('strips permission patterns and keeps each tool name once', () => {
+      expect(deriveToolSet(READONLY_TOOLS, [])).toBe('Read,Grep,Glob,Bash');
+      expect(deriveToolSet(CHECK_TOOLS, [])).toBe('Read,Grep,Glob,Bash');
+    });
+
+    it('appends the extra tools after the allowlist names', () => {
+      expect(deriveToolSet(BUILD_TOOLS, ['Agent', 'Skill'])).toBe('Read,Edit,Write,Glob,Grep,Bash,Agent,Skill');
+    });
+
+    it('does not repeat an extra tool the allowlist already names', () => {
+      expect(deriveToolSet('Read,Agent', ['Agent'])).toBe('Read,Agent');
+    });
+
+    it('keeps a comma inside a permission pattern out of the names', () => {
+      expect(deriveToolSet('Bash(git log:*,x),Read', [])).toBe('Bash,Read');
+    });
+
+    // An empty name would turn into `--tools ",Read"` -- never emit one.
+    it('never yields an empty or padded name', () => {
+      expect(deriveToolSet('', ['Agent'])).toBe('Agent');
+      expect(deriveToolSet('Read, Grep,', [])).toBe('Read,Grep');
     });
   });
 
@@ -593,5 +682,61 @@ describe('prompts', () => {
       expect(prompt).toContain("'sleep'");
       expect(prompt).toContain('ich warte auf einen Subagenten');
     });
+  });
+});
+
+// #1213: `--edit-last` bearbeitet den neuesten Kommentar des angemeldeten
+// Kontos -- nach einer Antwort des Menschen ist das SEINE. Die Denk-Rollen
+// ersetzen ihren Kommentar deshalb ueber dessen ID.
+describe('eigener Kommentar per ID statt --edit-last (#1213)', () => {
+  const PROMPTS = [
+    ['build', buildPrompt(7)],
+    ['ci-fix', ciFixPrompt(7, 'egal')],
+    ['plan', planPrompt(7)],
+    ['research', researchPrompt(7)],
+    ['check', checkPrompt(7, ['eins'], 'fix/7-x')],
+  ] as const;
+
+  // Das Verbot selbst nennt das Flag -- nur dieser eine Satz darf es enthalten.
+  const PROHIBITION = "**nie** mit '--edit-last'";
+
+  it.each(PROMPTS)('%s weist nie --edit-last an', (_name, prompt) => {
+    expect(prompt.split(PROHIBITION).join('')).not.toContain('--edit-last');
+  });
+
+  it.each([
+    ['plan', planPrompt(7)],
+    ['research', researchPrompt(7)],
+  ] as const)('%s legt den ersten Kommentar per Datei an', (_name, prompt) => {
+    expect(prompt).toContain('`Write`');
+    expect(prompt).toContain('Arbeitsverzeichnis');
+    expect(prompt).toContain('`gh issue comment 7 --body-file <pfad>`');
+  });
+
+  it.each([
+    ['plan', planPrompt(7), '🧠 Plan (Opus) — Status:'],
+    ['research', researchPrompt(7), '🔎 Recherche — Status:'],
+  ] as const)('%s findet den eigenen Kommentar ueber den Marker und ersetzt ihn per ID', (_name, prompt, marker) => {
+    expect(prompt).toContain(`über den Marker „${marker}"`);
+    expect(prompt).toContain(
+      `gh api --paginate repos/{owner}/{repo}/issues/7/comments --jq '.[] | select(.body | contains("${marker}")) | .id'`,
+    );
+    expect(prompt).toContain('gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@<pfad>');
+    expect(prompt).toContain('Großes `-F`');
+  });
+
+  it.each([
+    ['plan', planPrompt(7)],
+    ['research', researchPrompt(7)],
+  ] as const)('%s nennt den Grund fuer das Verbot', (_name, prompt) => {
+    expect(prompt).toContain(PROHIBITION);
+    expect(prompt).toContain('das trifft den neuesten\n   Kommentar des Kontos, und nach einer Antwort ist das die des Menschen');
+  });
+
+  it('docs/workflow/zyklus.md beschreibt denselben Weg ohne --edit-last', () => {
+    const doc = readFileSync(join(__dirname, '..', '..', 'docs', 'workflow', 'zyklus.md'), 'utf-8');
+    expect(doc).toContain('gh issue comment --body-file');
+    expect(doc).toContain('gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -F body=@<datei>');
+    expect(doc.split('nie per `--edit-last`').join('')).not.toContain('--edit-last');
   });
 });

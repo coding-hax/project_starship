@@ -9,9 +9,7 @@ import {
   credentialRowExists,
   currentAccountId,
   enableVirtualAuthenticator,
-  registerPasskey,
   resetAppData,
-  resetRateLimits,
   sessionRowExists,
   withDb,
 } from './helpers';
@@ -68,99 +66,13 @@ async function deleteAllCredentials(): Promise<void> {
  * `sessions` has no scoping either. `deleteAllCredentials()` only clears sessions
  * bound to a credential (`ON DELETE CASCADE`, #854) — throwaway sessions minted via
  * `freshSessionContext`/`createThrowawaySession()` without a `credentialId` outlive
- * their test (only the browser context gets closed, never the DB row). AK2 below
- * asserts a global "no other live sessions" count, so it needs both tables clean.
+ * their test (only the browser context gets closed, never the DB row). The
+ * session tests below assert exact counts of live sessions, so they need both
+ * tables clean.
  */
 async function deleteAllSessions(): Promise<void> {
   await withDb((client) => client.query('DELETE FROM sessions'));
 }
-
-test.describe('sicher (geteilte Sitzung, nie ausloggen)', () => {
-  test('AK1 (#1103): Gruppe "Gerät" zeigt die Karte "Passkeys" mit dem registrierten Passkey und dem iCloud-Hinweis', async ({
-    page,
-  }) => {
-    await registerPasskey(page, '/einstellungen');
-
-    const geraetGroup = page.locator('.einstellungen__group', { hasText: 'Gerät' });
-    await expect(geraetGroup.getByRole('heading', { name: 'Passkeys', level: 2 })).toBeVisible();
-    await expect(geraetGroup.getByText('Unbenanntes Gerät')).toBeVisible();
-    await expect(geraetGroup.getByText(/Hinzugefügt am \d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}/)).toBeVisible();
-    await expect(
-      geraetGroup.getByText(/iCloud-Schlüsselbund synchronisierter Passkey ist auf allen deinen Apple-Geräten derselbe/),
-    ).toBeVisible();
-    await expect(
-      geraetGroup.getByText(/im Passkey-Dialog einen anderen Speicherort wählen/),
-    ).toBeVisible();
-  });
-
-  test('AK6: Karte bleibt im Dark Mode mit reduzierter Bewegung sichtbar und bedienbar (mobiler Viewport)', async ({
-    page,
-  }) => {
-    await registerPasskey(page);
-    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-    await page.goto('/einstellungen');
-
-    const geraetGroup = page.locator('.einstellungen__group', { hasText: 'Gerät' });
-    await expect(geraetGroup.getByRole('heading', { name: 'Passkeys', level: 2 })).toBeVisible();
-    await expect(geraetGroup.getByRole('button', { name: 'Beenden' })).toBeVisible();
-  });
-
-  test('#936 AK1+AK2: „Umbenennen" und „Widerrufen" stehen unter Name/Zusatzzeile, mit ≥44px Höhe (375×812)', async ({
-    page,
-  }) => {
-    await registerPasskey(page, '/einstellungen');
-
-    const row = page.locator('.devices-panel__item', { hasText: 'Unbenanntes Gerät' });
-    const description = row.locator('.row__description');
-    const renameButton = row.getByRole('button', { name: 'Umbenennen' });
-    const revokeButton = row.getByRole('button', { name: 'Widerrufen' });
-
-    await expect(description).toBeVisible();
-    await expect(renameButton).toBeVisible();
-    await expect(revokeButton).toBeVisible();
-
-    const descriptionBox = await description.boundingBox();
-    const renameBox = await renameButton.boundingBox();
-    const revokeBox = await revokeButton.boundingBox();
-
-    expect(descriptionBox!.y + descriptionBox!.height, 'Umbenennen-Knopf unter der Zusatzzeile').toBeLessThanOrEqual(
-      renameBox!.y + 1,
-    );
-    expect(descriptionBox!.y + descriptionBox!.height, 'Widerrufen-Knopf unter der Zusatzzeile').toBeLessThanOrEqual(
-      revokeBox!.y + 1,
-    );
-    expect(renameBox!.height, 'Umbenennen-Knopf ≥44px hoch').toBeGreaterThanOrEqual(44);
-    expect(revokeBox!.height, 'Widerrufen-Knopf ≥44px hoch').toBeGreaterThanOrEqual(44);
-
-    const viewport = page.viewportSize()!;
-    expect(renameBox!.x, 'Umbenennen-Knopf innerhalb 375px Breite').toBeGreaterThanOrEqual(0);
-    expect(renameBox!.x + renameBox!.width, 'Umbenennen-Knopf ragt nicht heraus').toBeLessThanOrEqual(
-      viewport.width,
-    );
-    expect(revokeBox!.x + revokeBox!.width, 'Widerrufen-Knopf ragt nicht heraus').toBeLessThanOrEqual(
-      viewport.width,
-    );
-  });
-
-  test('#936 AK4: Anordnung bleibt im Dark Mode mit reduzierter Bewegung erhalten (375×812)', async ({ page }) => {
-    await registerPasskey(page);
-    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-    await page.goto('/einstellungen');
-
-    const row = page.locator('.devices-panel__item', { hasText: 'Unbenanntes Gerät' });
-    const description = row.locator('.row__description');
-    const renameButton = row.getByRole('button', { name: 'Umbenennen' });
-    const revokeButton = row.getByRole('button', { name: 'Widerrufen' });
-
-    await expect(renameButton).toBeVisible();
-    await expect(revokeButton).toBeVisible();
-
-    const descriptionBox = await description.boundingBox();
-    const renameBox = await renameButton.boundingBox();
-    expect(descriptionBox!.y + descriptionBox!.height).toBeLessThanOrEqual(renameBox!.y + 1);
-    expect(renameBox!.height).toBeGreaterThanOrEqual(44);
-  });
-});
 
 test.describe('destruktiv (Wegwerf-Sitzung, frischer Context)', () => {
   test('AK2: Widerruf entfernt genau diesen Passkey aus Liste und Postgres, andere bleiben', async ({
@@ -252,47 +164,6 @@ test.describe('destruktiv (Wegwerf-Sitzung, frischer Context)', () => {
     await contextA.close();
     await contextB.close();
   });
-
-  test('AK5: offline ist „Widerrufen" inaktiv mit Hinweis', async ({ browser, baseURL }) => {
-    const { context, page } = await freshSessionContext(browser, baseURL);
-    await createThrowawayCredential({ label: 'Offline-Test' });
-
-    await page.goto('/einstellungen');
-    await context.setOffline(true);
-
-    // Scoped to the panel's own hint class — session-panel.tsx shows a similarly
-    // worded hint in the same "Gerät" group while offline (own #857 AK5 test).
-    await expect(
-      page.locator('.devices-panel__hint', { hasText: 'Geht nur online.' }),
-    ).toBeVisible();
-    const row = page.locator('.devices-panel__item', { hasText: 'Offline-Test' });
-    await expect(row.getByRole('button', { name: 'Widerrufen' })).toBeDisabled();
-
-    await context.setOffline(false);
-    await context.close();
-  });
-});
-
-test.describe('#856: Gerät hinzufügen durch Recovery-Hinweis ersetzt (frischer Context)', () => {
-  test('AK5: Panel zeigt Recovery-Hinweis statt „Gerät hinzufügen"-Knopf', async ({
-    browser,
-    baseURL,
-  }) => {
-    await deleteAllCredentials();
-    await createThrowawayCredential({ label: 'Bestehend' });
-    const { context, page } = await freshSessionContext(browser, baseURL);
-
-    await page.goto('/einstellungen');
-
-    await expect(
-      page.getByText(
-        'Neues Gerät hinzufügen? Öffne die App auf dem neuen Gerät und melde es unter „Anmelden" mit deinem Recovery-Code an.',
-      ),
-    ).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Gerät hinzufügen' })).toHaveCount(0);
-
-    await context.close();
-  });
 });
 
 test.describe('Gerät umbenennen (destruktiv, frischer Context)', () => {
@@ -316,110 +187,6 @@ test.describe('Gerät umbenennen (destruktiv, frischer Context)', () => {
       client.query('SELECT label FROM credentials WHERE id = $1', [id]),
     );
     expect(rows.rows[0].label).toBe('Neuer Name');
-
-    await context.close();
-  });
-
-  test('AK2: das namenlose Erstgerät ist umbenennbar', async ({ browser, baseURL }) => {
-    const { context, page } = await freshSessionContext(browser, baseURL);
-    const id = await createThrowawayCredential({});
-
-    await page.goto('/einstellungen');
-    const row = page.locator('.devices-panel__item', { hasText: 'Unbenanntes Gerät' });
-    await row.getByRole('button', { name: 'Umbenennen' }).click();
-    await page.getByLabel('Neuer Name').fill('Mein iPhone');
-    await page.getByRole('button', { name: 'Speichern' }).click();
-
-    await expect(page.locator('.devices-panel__item', { hasText: 'Mein iPhone' })).toBeVisible();
-    const rows = await withDb((client) =>
-      client.query('SELECT label FROM credentials WHERE id = $1', [id]),
-    );
-    expect(rows.rows[0].label).toBe('Mein iPhone');
-
-    await context.close();
-  });
-
-  test('AK3: ein neu beim Erstsetup angelegtes Gerät kann direkt benannt werden', async ({
-    browser,
-  }) => {
-    await resetRateLimits();
-    await deleteAllCredentials();
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    await enableVirtualAuthenticator(page);
-
-    await page.goto('/anmelden');
-    await page.getByLabel('Gerätename (optional)').fill('Erstes iPhone');
-    await page.getByRole('button', { name: 'Passkey einrichten' }).click();
-    await page.getByTestId('recovery-code').waitFor();
-    await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
-    await page.waitForURL('**/uebersicht');
-
-    const rows = await withDb((client) =>
-      client.query("SELECT label FROM credentials WHERE label = 'Erstes iPhone'"),
-    );
-    expect(rows.rows).toHaveLength(1);
-
-    await page.goto('/einstellungen');
-    await expect(page.locator('.devices-panel__item', { hasText: 'Erstes iPhone' })).toBeVisible();
-
-    await context.close();
-  });
-
-  test('AK4: leerer Name setzt wieder auf „Unbenanntes Gerät" zurück', async ({
-    browser,
-    baseURL,
-  }) => {
-    const { context, page } = await freshSessionContext(browser, baseURL);
-    const id = await createThrowawayCredential({ label: 'Hat Namen' });
-
-    await page.goto('/einstellungen');
-    const row = page.locator('.devices-panel__item', { hasText: 'Hat Namen' });
-    await row.getByRole('button', { name: 'Umbenennen' }).click();
-    await page.getByLabel('Neuer Name').fill('');
-    await page.getByRole('button', { name: 'Speichern' }).click();
-
-    await expect(
-      page.locator('.devices-panel__item', { hasText: 'Unbenanntes Gerät' }),
-    ).toBeVisible();
-    const rows = await withDb((client) =>
-      client.query('SELECT label FROM credentials WHERE id = $1', [id]),
-    );
-    expect(rows.rows[0].label).toBeNull();
-
-    await context.close();
-  });
-
-  test('AK5a: offline ist „Umbenennen" inaktiv mit Hinweis', async ({ browser, baseURL }) => {
-    const { context, page } = await freshSessionContext(browser, baseURL);
-    await createThrowawayCredential({ label: 'Offline-Test' });
-
-    await page.goto('/einstellungen');
-    await context.setOffline(true);
-
-    await expect(
-      page.locator('.devices-panel__hint', { hasText: 'Geht nur online.' }),
-    ).toBeVisible();
-    const row = page.locator('.devices-panel__item', { hasText: 'Offline-Test' });
-    await expect(row.getByRole('button', { name: 'Umbenennen' })).toBeDisabled();
-
-    await context.setOffline(false);
-    await context.close();
-  });
-
-  test('AK5b: Umbenennen-Feld bleibt im Dark Mode mit reduzierter Bewegung bedienbar (mobiler Viewport)', async ({
-    browser,
-    baseURL,
-  }) => {
-    const { context, page } = await freshSessionContext(browser, baseURL);
-    await createThrowawayCredential({ label: 'Dark-Test' });
-    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-    await page.goto('/einstellungen');
-
-    const row = page.locator('.devices-panel__item', { hasText: 'Dark-Test' });
-    await row.getByRole('button', { name: 'Umbenennen' }).click();
-    await expect(page.getByLabel('Neuer Name')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Speichern' })).toBeVisible();
 
     await context.close();
   });
@@ -465,24 +232,6 @@ test.describe('#854: Sitzung an Credential gebunden (destruktiv, frischer Contex
     await contextA.close();
     await contextX.close();
     await contextY.close();
-  });
-
-  test('AK2: „Dieses Gerät" markiert nur die Zeile der eigenen Credential', async ({
-    browser,
-    baseURL,
-  }) => {
-    await deleteAllCredentials();
-    const idOwn = await createThrowawayCredential({ label: 'Aktives Gerät' });
-    await createThrowawayCredential({ label: 'Zweitgerät' });
-    const { context, page } = await sessionContextFor(browser, baseURL, idOwn);
-
-    await page.goto('/einstellungen');
-    const rowOwn = page.locator('.devices-panel__item', { hasText: 'Aktives Gerät' });
-    const rowOther = page.locator('.devices-panel__item', { hasText: 'Zweitgerät' });
-    await expect(rowOwn.getByText('Dieses Gerät')).toBeVisible();
-    await expect(rowOther.getByText('Dieses Gerät')).toHaveCount(0);
-
-    await context.close();
   });
 
   test('AK3: Selbst-Widerruf verlangt eine eigene Bestätigung und meldet ab', async ({
@@ -552,7 +301,7 @@ test.describe('#854: Sitzung an Credential gebunden (destruktiv, frischer Contex
         expect(await credentialColumns(client)).toEqual(credentialColumnsBefore);
       } finally {
         // DDL ist in Postgres transaktional — der Rollback macht auch DROP/ADD
-        // COLUMN rückgängig, die geteilte Test-DB bleibt unberührt (journal.spec.ts:184).
+        // COLUMN rückgängig, die geteilte Test-DB bleibt unberührt (wie im 0012-Migrationstest in journal.spec.ts).
         await client.query('ROLLBACK');
       }
     });
@@ -560,85 +309,6 @@ test.describe('#854: Sitzung an Credential gebunden (destruktiv, frischer Contex
 });
 
 test.describe('#857: Sitzungen an einer Stelle, deutbare Zahl (destruktiv, frischer Context)', () => {
-  test('AK1: „App sperren" und „Alle anderen Sitzungen beenden" stehen zusammen in der Sitzung-Karte, kein „Beenden" mehr in der Geräte-Karte', async ({
-    browser,
-    baseURL,
-  }) => {
-    const { context, page } = await freshSessionContext(browser, baseURL);
-    await createThrowawaySession();
-
-    await page.goto('/einstellungen');
-
-    const sessionPanel = page.locator('.session-panel');
-    await expect(sessionPanel.getByRole('button', { name: 'App sperren' })).toBeVisible();
-    await expect(sessionPanel.getByRole('button', { name: 'Beenden' })).toBeVisible();
-    const endRow = sessionPanel.locator('.row', { hasText: 'Alle anderen Sitzungen beenden' });
-    await expect(endRow).toContainText('App sperren');
-
-    await expect(
-      page.locator('.devices-panel').getByRole('button', { name: 'Beenden' }),
-    ).toHaveCount(0);
-
-    await context.close();
-  });
-
-  test('AK2: ein echter Login coalesct die Alt-Sitzungen desselben Passkeys — die Zahl entspricht anderen Geräten', async ({
-    browser,
-  }) => {
-    await deleteAllCredentials();
-    await deleteAllSessions();
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    await enableVirtualAuthenticator(page);
-
-    // Registrierung mintet Credential C und (No-op-Coalescing) Sitzung S1.
-    await page.goto('/anmelden');
-    await page.getByRole('button', { name: 'Passkey einrichten' }).click();
-    await page.getByTestId('recovery-code').waitFor();
-    await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
-    await page.waitForURL('**/uebersicht');
-
-    const { rows: credentialRows } = await withDb((client) =>
-      client.query('SELECT id FROM credentials ORDER BY created_at DESC LIMIT 1'),
-    );
-    const credentialId = credentialRows[0].id as string;
-
-    async function sessionCountFor(id: string): Promise<number> {
-      const result = await withDb((client) =>
-        client.query('SELECT count(*)::int AS n FROM sessions WHERE credential_id = $1', [id]),
-      );
-      return result.rows[0].n as number;
-    }
-
-    // Zwei direkt geseedete Alt-Sitzungen desselben Passkeys — Anmelde-Rückstand,
-    // der createSession() nie zu sehen bekam und darum nie coalescte (Rest-Altlast
-    // aus der Zeit vor #857).
-    await createThrowawaySession(credentialId);
-    await createThrowawaySession(credentialId);
-    expect(await sessionCountFor(credentialId)).toBe(3);
-
-    // "App sperren" beendet nur die aktuelle Sitzung serverseitig (S1).
-    await page.goto('/einstellungen');
-    const sessionPanel = page.locator('.session-panel');
-    await sessionPanel.getByRole('button', { name: 'App sperren' }).click();
-    await sessionPanel.getByRole('button', { name: 'Sperren' }).click();
-    await page.waitForURL('**/anmelden');
-
-    // Nur der echte Login-Pfad ruft createSession(C) und coalesct damit die beiden
-    // geseedeten Alt-Sitzungen weg — direkt geseedete Sitzungen umgehen das.
-    await page.getByRole('button', { name: 'Mit Passkey anmelden' }).click();
-    await page.waitForURL('**/uebersicht');
-
-    expect(await sessionCountFor(credentialId)).toBe(1);
-
-    await page.goto('/einstellungen');
-    await expect(
-      page.locator('.session-panel').getByText('Keine weiteren aktiven Sitzungen'),
-    ).toBeVisible();
-
-    await context.close();
-  });
-
   test('AK6 (#1103): Migration 0025 hat einen Rückweg — down entfernt last_seen_at, up legt sie wieder an', async () => {
     // last_seen_at kommt in #1103 belebt zurück (Retarget von 0022 auf 0025 —
     // die alte 0022-Prämisse "last_seen_at existiert nicht" gilt seither nicht mehr).
@@ -676,7 +346,7 @@ test.describe('#857: Sitzungen an einer Stelle, deutbare Zahl (destruktiv, frisc
         expect((await sessionColumns(client)).sort()).toEqual([...columnsBefore].sort());
       } finally {
         // DDL ist in Postgres transaktional — der Rollback macht auch ADD/DROP
-        // COLUMN rückgängig, die geteilte Test-DB bleibt unberührt (journal.spec.ts:184).
+        // COLUMN rückgängig, die geteilte Test-DB bleibt unberührt (wie im 0012-Migrationstest in journal.spec.ts).
         await client.query('ROLLBACK');
       }
     });
@@ -951,31 +621,6 @@ test.describe('#1102: Anmeldungen je (Passkey, Gerät) (destruktiv, frischer Con
 
     await context.close();
   });
-
-  test('AK7: die Einstellungen bleiben auf dem iPhone im Dark Mode unverändert bedienbar', async ({
-    browser,
-    baseURL,
-  }) => {
-    const session = await createThrowawaySession(undefined, randomUUID());
-    const context = await browser.newContext({
-      viewport: { width: 375, height: 812 },
-      colorScheme: 'dark',
-      reducedMotion: 'reduce',
-    });
-    await context.addCookies([{ name: 'starship_session', value: session.token, url: baseURL }]);
-    const page = await context.newPage();
-
-    await page.goto('/einstellungen');
-    await expect(page.locator('.devices-panel')).toBeVisible();
-    await expect(page.locator('.session-panel')).toBeVisible();
-
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    );
-    expect(overflow).toBeLessThanOrEqual(0);
-
-    await context.close();
-  });
 });
 
 test.describe('#1103: Karte "Anmeldungen" (destruktiv, frischer Context)', () => {
@@ -1085,49 +730,6 @@ test.describe('#1103: Karte "Anmeldungen" (destruktiv, frischer Context)', () =>
     expect(await sessionRowExists(ownHash)).toBe(true);
     await expect(loginsPanel.locator('.logins-panel__item')).toHaveCount(1);
 
-    await context.close();
-  });
-
-  test('AK5: die eigene Zeile hat kein "Beenden", sondern den Verweis auf „App sperren"', async ({
-    browser,
-    baseURL,
-  }) => {
-    const { context, page } = await freshSessionContext(browser, baseURL);
-
-    await page.goto('/einstellungen');
-    const ownRow = page.locator('.logins-panel__item', { hasText: 'Dieses Gerät' });
-    await expect(ownRow.getByRole('button', { name: 'Beenden' })).toHaveCount(0);
-    await expect(ownRow.getByText('App sperren')).toBeVisible();
-
-    await context.close();
-  });
-
-  test('AK7: „Anmeldungen" bleibt auf dem iPhone im Dark Mode sichtbar, offline mit Hinweis', async ({
-    browser,
-    baseURL,
-  }) => {
-    const session = await createThrowawaySession(undefined, randomUUID());
-    const context = await browser.newContext({
-      viewport: { width: 375, height: 812 },
-      colorScheme: 'dark',
-      reducedMotion: 'reduce',
-    });
-    await context.addCookies([{ name: 'starship_session', value: session.token, url: baseURL }]);
-    const page = await context.newPage();
-
-    await page.goto('/einstellungen');
-    const loginsPanel = page.locator('.logins-panel');
-    await expect(loginsPanel).toBeVisible();
-
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    );
-    expect(overflow).toBeLessThanOrEqual(0);
-
-    await context.setOffline(true);
-    await expect(loginsPanel.getByText('Geht nur online.')).toBeVisible();
-
-    await context.setOffline(false);
     await context.close();
   });
 });

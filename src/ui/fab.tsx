@@ -8,7 +8,7 @@ export interface FabProps {
   onClick: () => void;
   /**
    * Pins `.fab__label` to this width (px) instead of letting it hug `text`
-   * (issue #920 CI-Fund, tests/uebersicht-ladezustand.spec.ts AC1, dritte Runde):
+   * (issue #920 CI-Fund, dritte Runde):
    * `.fab` is `position: fixed; right: …; width: auto`, so any font substitution
    * that renders `text` at a different width moves `.fab`'s own box — neither
    * `font-display: block` nor `optional` prevented it, because the mismatch isn't

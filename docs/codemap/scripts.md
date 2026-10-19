@@ -13,6 +13,7 @@
 - `check-{dexie-bump,codemap}.sh` — Dexie-Bump-Hinweis, Wächter für diese Karten
 - `git-hooks/pre-push` / `tests/*.test.sh` — Slot-Claim-Guard; Bash-Fixture-Suiten
 - `claude-hooks/post-edit-checks.sh` — PostToolUse-Hook: die check-*.sh schon beim Editieren
+- `claude-hooks/pre-bash-guard.mjs` / `claude-hooks/stop-guard.sh` — sperrt --edit-last, Haupt-Checkout, pnpm i; Ende erst gepusht
 - `starship-runner` — Shim, den launchd/systemd startet
 - `bootstrap-github.sh` / `vercel-build.sh` / `smoke-decide.sh` — Setup, Migration, Post-Deploy-Smoke
 - `{launchd,systemd}-setup.md` / `gen-slot-plists.sh` — Runner als Dienst je Slot

@@ -61,6 +61,9 @@ Ich kann eine Aufgabe erfassen, ohne dafür die Ansicht zu wechseln.
       Then erscheint sie sofort in der Liste und die Outbox enthält einen Eintrag.
 - [ ] Given ich war offline und werde online, When der Sync läuft,
       Then existiert die Aufgabe serverseitig.
+- [ ] Given das Bottom-Sheet ist offen, When es erscheint,
+      Then hat es denselben Abstand zum Bildschirmrand wie andere Sheets
+      (prüft der Mensch am Gerät)
 
 ## Betroffene Dateien
 
@@ -79,8 +82,11 @@ Ich kann eine Aufgabe erfassen, ohne dafür die Ansicht zu wechseln.
 Kein Milestone-Feld: das Repo führt keine GitHub-Milestones. Wo ein Ticket in
 der Roadmap steht, sagt `docs/VISION.md` — und nur die.
 
-Die Akzeptanzkriterien sind kein Prosa-Wunsch, sondern die **Spezifikation der Playwright-Tests**.
-Was nicht als Kriterium dasteht, wird nicht gebaut.
+Die Akzeptanzkriterien sind kein Prosa-Wunsch, sondern die **Spezifikation der Playwright-Tests** —
+für Kriterien unter K1–K5 (ADR-0032/#1210). Ein D1–D7-Kriterium (Optik,
+Varianten, Feinschliff) bekommt keinen E2E-Test; der Autor markiert es dafür
+am Zeilenende mit `(prüft der Mensch am Gerät)`. Was nicht als Kriterium
+dasteht, wird nicht gebaut.
 
 ## Branch & Commit
 
@@ -146,8 +152,10 @@ Check würde nur Fehlalarme produzieren.
   **keine** Desktop-Akzeptanzkriterien mehr: sie würden nirgends ausgeführt und sähen
   trotzdem nach Abdeckung aus. Desktop-only-Layout (Sidebar, Nav-Reihenfolge) ist
   damit ungeprüft — das ist der bewusst bezahlte Preis, siehe #564.
-- **Offline-Tests sind Pflicht** — `context.setOffline(true)`, Mutation, wieder online,
-  Assertion gegen den Serverzustand.
+- **Offline-Tests sind Pflicht nur für einen neuen Schreibweg** (neue Tabelle
+  oder Mutation) — `context.setOffline(true)`, Mutation, wieder online,
+  Assertion gegen den Serverzustand. Eine weitere Rundreise für einen schon
+  abgedeckten Schreibweg fällt unter D5 (#1210).
 
 ### Wie ein Flake-Fix belegt wird
 

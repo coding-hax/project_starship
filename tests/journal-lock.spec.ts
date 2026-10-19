@@ -1,6 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
-  expectUebersichtLoaded,
   freezeClock,
   installClockAt,
   openSecondDevice,
@@ -39,61 +38,6 @@ async function journalKeyRowCount(): Promise<number> {
   );
   return result.rows[0].n as number;
 }
-
-test('Ersteinrichtung erzeugt die Huelle und entsperrt sofort (AC1)', async ({ page }) => {
-  await setUpJournal(page, PASSPHRASE);
-  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
-
-  await page.evaluate(() => window.__starship.sync());
-  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
-  expect(await journalKeyRowCount()).toBe(1);
-});
-
-test('gesperrt bleibt Uebersicht/Aufgaben/Routinen voll bedienbar (AC2)', async ({ page }) => {
-  await setUpJournal(page, PASSPHRASE);
-  await page.reload();
-  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
-
-  const nav = page.getByRole('navigation', { name: 'Hauptnavigation' });
-
-  await nav.getByRole('link', { name: 'Übersicht' }).click();
-  await expect(page).toHaveURL(/\/uebersicht$/);
-  await expectUebersichtLoaded(page);
-
-  await nav.getByRole('link', { name: 'Aufgaben' }).click();
-  await expect(page).toHaveURL(/\/aufgaben$/);
-  await expect(page.getByRole('heading', { name: 'Aufgaben', level: 1 })).toBeVisible();
-
-  await nav.getByRole('link', { name: 'Routinen' }).click();
-  await expect(page).toHaveURL(/\/routinen$/);
-});
-
-test('richtige Passphrase entsperrt, falsche zeigt eine ruhige Meldung ohne Absturz (AC3)', async ({
-  page,
-}) => {
-  await setUpJournal(page, PASSPHRASE);
-  await page.reload();
-  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
-
-  await page.getByLabel('Passphrase', { exact: true }).fill(WRONG_PASSPHRASE);
-  await page.getByRole('button', { name: 'Entsperren', exact: true }).click();
-
-  const message = page.getByRole('status');
-  await expect(message).toBeVisible();
-  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
-
-  await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
-  await page.getByRole('button', { name: 'Entsperren', exact: true }).click();
-  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
-});
-
-test('Default speicherresident: Kaltstart sperrt wieder (AC4)', async ({ page }) => {
-  await setUpJournal(page, PASSPHRASE);
-  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
-
-  await page.reload();
-  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
-});
 
 test('Passphrase-Felder tragen autocomplete fuer den Passwortmanager (Fund #392)', async ({
   page,
@@ -144,33 +88,6 @@ test('Opt-in Default AUS, eingeschaltet ueberlebt den Neustart, Schluessel bleib
   await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
 });
 
-test('Auto-Lock sperrt nach dem Inaktivitaetsfenster, Aktivitaet davor haelt es offen (AC6)', async ({
-  page,
-}) => {
-  await installClockAt(page);
-  await setUpJournal(page, PASSPHRASE);
-  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
-
-  await freezeClock(page);
-  await page.clock.fastForward(AUTO_LOCK_MS + 1_000);
-  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
-});
-
-test('Aktivitaet vor Ablauf des Fensters haelt das Journal entsperrt (AC6 Gegenprobe)', async ({
-  page,
-}) => {
-  await installClockAt(page);
-  await setUpJournal(page, PASSPHRASE);
-  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
-
-  await freezeClock(page);
-  await page.clock.fastForward(AUTO_LOCK_MS - 5_000);
-  await page.keyboard.press('Shift');
-  // Ohne den Reset durch die Aktivitaet waere das Fenster hier laengst um.
-  await page.clock.fastForward(10_000);
-  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
-});
-
 test('zweiter Tab ist automatisch entsperrt, journalLock sperrt beide (AC7)', async ({
   page,
   context,
@@ -187,25 +104,6 @@ test('zweiter Tab ist automatisch entsperrt, journalLock sperrt beide (AC7)', as
   await expect(secondPage.locator('.journal-gate[data-state="locked"]')).toBeVisible();
 });
 
-test('Tokens/Dark Mode/reduced-motion fuer den Entsperr-Zustand (AC8)', async ({ page }) => {
-  await setUpJournal(page, PASSPHRASE);
-  await page.reload();
-  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
-
-  const lightColor = await page
-    .locator('.journal-gate__submit')
-    .evaluate((el) => getComputedStyle(el).backgroundColor);
-
-  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-  const darkColor = await page
-    .locator('.journal-gate__submit')
-    .evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(darkColor).not.toBe(lightColor);
-
-  const message = page.locator('.journal-gate__message');
-  await expect(message).toHaveCount(0);
-});
-
 /** The stored envelope as the server holds it — unchanged bytes prove no re-wrap. */
 async function serverEnvelope(): Promise<string> {
   const result = await withDb((client) => client.query('SELECT envelope FROM journal_keys'));
@@ -216,27 +114,6 @@ async function pushEverything(page: Page) {
   await page.evaluate(() => window.__starship.sync());
   await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
 }
-
-test('Geraet ohne lokale Huelle wartet auf den Sync und landet gesperrt, nie auf einrichten (#371 AC1+AC2)', async ({
-  page,
-  browser,
-}) => {
-  await setUpJournal(page, PASSPHRASE);
-  await pushEverything(page);
-
-  // Eigener Speichercontainer, dieselbe Sitzung — genau der Fall, der die Huelle
-  // ueberschrieben hat: frische Installation, geraeumter PWA-Speicher, Safari
-  // neben der Homescreen-App.
-  const second = await openSecondDevice(browser, page);
-  await second.goto('/journal');
-
-  await expect(second.locator('.journal-gate[data-state="locked"]')).toBeVisible();
-  await expect(second.locator('.journal-gate[data-state="setup"]')).toHaveCount(0);
-
-  await second.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
-  await second.getByRole('button', { name: 'Entsperren', exact: true }).click();
-  await expect(second.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
-});
 
 test('journalSetup verweigert das Ueberschreiben einer vorhandenen Huelle (#371 AC3)', async ({
   page,
@@ -405,45 +282,4 @@ test('Geraetewechsel ohne persistierten DEK landet gesperrt, nicht automatisch o
   await second.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
   await second.getByRole('button', { name: 'Entsperren', exact: true }).click();
   await expect(second.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
-});
-
-test('Passphrase-Feld und Entsperren-Knopf sind horizontal zentriert (#934)', async ({ page }) => {
-  await setUpJournal(page, PASSPHRASE);
-  await page.reload();
-  await expect(page.locator('.journal-gate[data-state="locked"]')).toBeVisible();
-
-  const mainBox = await page.locator('main.shell__main').boundingBox();
-  const inputBox = await page.getByLabel('Passphrase', { exact: true }).boundingBox();
-  const buttonBox = await page
-    .getByRole('button', { name: 'Entsperren', exact: true })
-    .boundingBox();
-  expect(mainBox).not.toBeNull();
-  expect(inputBox).not.toBeNull();
-  expect(buttonBox).not.toBeNull();
-
-  const columnCenter = mainBox!.x + mainBox!.width / 2;
-  const inputCenter = inputBox!.x + inputBox!.width / 2;
-  const buttonCenter = buttonBox!.x + buttonBox!.width / 2;
-  expect(Math.abs(inputCenter - columnCenter)).toBeLessThanOrEqual(1);
-  expect(Math.abs(buttonCenter - columnCenter)).toBeLessThanOrEqual(1);
-});
-
-test('der entsperrte Editor behaelt die volle Spaltenbreite, keine Formular-Zentrierung (AK3, #934)', async ({
-  page,
-}) => {
-  await setUpJournal(page, PASSPHRASE);
-  await expect(page.locator('.journal-gate[data-state="unlocked"]')).toBeVisible();
-
-  const main = page.locator('main.shell__main');
-  const mainBox = await main.boundingBox();
-  const gateBox = await page.locator('.journal-gate[data-state="unlocked"]').boundingBox();
-  const mainPadding = await main.evaluate((el) => {
-    const style = getComputedStyle(el);
-    return parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-  });
-  expect(mainBox).not.toBeNull();
-  expect(gateBox).not.toBeNull();
-  // .journal-gate has no horizontal padding of its own, so "full column width"
-  // means it fills main's content box, not main's (padded) border box.
-  expect(gateBox!.width).toBeGreaterThan(mainBox!.width - mainPadding - 2);
 });

@@ -1,7 +1,6 @@
 /* `align-items: flex-start`, not `center`: the h1 keeps its regular
-   `margin-block-end: var(--space-6)` (design-system.spec.ts's global
-   header↔content rule, #85, pinned to /aufgaben specifically — the h1's own
-   margin must stay untouched) — centering against that trailing margin would
+   `margin-block-end: var(--space-6)` (the global header↔content rule, #85 —
+   the h1's own margin must stay untouched) — centering against that trailing margin would
    pull the PageFace visibly below the heading's own text. Top-aligning both
    sidesteps the margin entirely, since it never enters a start-edge layout.
    `justify-content: space-between` dropped (issue #830): with the face as a
@@ -19,8 +18,7 @@
    with the Nunito web fallback on CI/Linux-Chromium before swapping to the
    loaded file; the fallback's per-character metrics don't match Nunito's
    exactly, so the h1's content width shifts by a few px on swap and drags
-   PageFace sideways with it (CI-Fund: formsprache.spec.ts AK6, layout-shift
-   score over threshold). Same fix as `.uebersicht__title-cluster h1`
+   PageFace sideways with it (CI-Fund: layout-shift score over threshold). Same fix as `.uebersicht__title-cluster h1`
    (uebersicht.css): `flex: 1` sizes the box from the row's leftover space
    instead of from the text, so a font-swap width change never moves the
    following sibling. "Aufgaben" itself never wraps or overflows here (unlike
@@ -37,8 +35,8 @@
    .task-list__surface würden die dort eingebettete Liste mit-zweispalten. */
 @media (min-width: 768px) {
   /* AK1: zwei Spalten. Die eine .task-list__surface (task-list.css) wird zum
-     2-Spalten-Grid — das Element selbst bleibt unverändert, die mobilen
-     "genau eine Fläche"-Tests (tasks.spec.ts AK9) bleiben also wahr. */
+     2-Spalten-Grid — das Element selbst bleibt unverändert, mobil bleibt es
+     also genau eine Fläche. */
   [data-ground='aufgaben'] .task-list__surface {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

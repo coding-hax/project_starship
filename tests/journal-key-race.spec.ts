@@ -98,62 +98,6 @@ async function entryCountInDb(entryDate: string): Promise<number> {
   return rows.rows[0].n as number;
 }
 
-test('AK1: der verdrängte Envelope landet im Stash, bevor die fremde Hülle ihn überschreibt', async ({
-  page,
-  browser,
-}) => {
-  await registerPasskey(page, '/journal');
-
-  // Baseline: A's own first setup + push/pull round trip stashes nothing — a
-  // pull that echoes back this device's own just-pushed row must not look like
-  // a foreign displacement.
-  await page.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE_A);
-  await page.getByLabel('Passphrase wiederholen').fill(PASSPHRASE_A);
-  await page.getByRole('button', { name: 'Einrichten' }).click();
-  await page.getByTestId('journal-recovery-key').waitFor();
-  await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
-  await page.locator('.journal-gate[data-state="unlocked"]').waitFor();
-
-  const envelopeABeforeRace = await page.evaluate(async () => {
-    const records = await window.__starship.debugRecords();
-    return records.find((r) => r.table === 'journal_keys')!.data.envelope;
-  });
-
-  await page.evaluate(() => window.__starship.sync());
-  expect(await page.evaluate(() => window.__starship.debugJournalKeyStash())).toEqual([]);
-
-  const deviceB = await openSecondDevice(browser, page);
-  await deviceB.evaluate((passphrase) => window.__starship.debugCompetingSetup(passphrase), PASSPHRASE_B);
-  await deviceB.evaluate(() => window.__starship.sync());
-
-  // A pulls B's now-winning envelope.
-  await page.evaluate(() => window.__starship.sync());
-
-  const stash = await page.evaluate(() => window.__starship.debugJournalKeyStash());
-  expect(stash).toHaveLength(1);
-  expect(stash[0].envelope).toEqual(envelopeABeforeRace);
-});
-
-test('AK2: nach der Verdrängung öffnet die alte Passphrase das Journal nicht mehr, die neue schon', async ({
-  page,
-  browser,
-}) => {
-  await raceUntilDisplaced(page, browser);
-
-  // A cold restart (reload) re-reads the local envelope from scratch instead of
-  // trusting the DEK still held in this tab's memory — the real symptom is what
-  // a freshly opened tab or a reinstalled app sees, not an already-unlocked one.
-  await page.reload();
-  await page.locator('.journal-gate[data-state="locked"]').waitFor();
-
-  expect(await page.evaluate((p) => window.__starship.journalUnlock(p), PASSPHRASE_A)).toBe('wrong');
-  expect(await page.evaluate((p) => window.__starship.journalUnlock(p), PASSPHRASE_B)).toBe('ok');
-
-  const texts = await entryTexts(page, ENTRY_DATE);
-  expect(texts).not.toContain(TEXT_A);
-  expect(texts).toContain(TEXT_B);
-});
-
 test('AK3: die alte Passphrase im Bergungs-Formular macht die Alt-Einträge wieder lesbar', async ({
   page,
   browser,
@@ -372,36 +316,6 @@ test.describe('Journal-Setup erst nach vollständig geprüftem Konto (#1135)', (
     await expect
       .poll(() => deviceB.evaluate(() => window.__starship.journalLockState()))
       .toBe('unavailable');
-
-    await deviceB.close();
-  });
-
-  test('durchgelaufen mit Envelope: locked, benutzt die spätere Seite, kein Ersatz', async ({
-    page,
-    browser,
-  }) => {
-    await registerPasskey(page, '/uebersicht');
-    await settleJournalHabitBoot(page);
-    await seedTasks(PULL_PAGE_LIMIT, 'Seed #1135 ');
-    await page.evaluate((p) => window.__starship.journalSetup(p), PASSPHRASE);
-    await page.evaluate(() => window.__starship.sync());
-
-    const deviceB = await openGatedDevice(browser, page, () => true);
-
-    await expect.poll(() => deviceB.evaluate(() => window.__starship.journalLockState())).toBe('locked');
-
-    await deviceB.close();
-  });
-
-  test('durchgelaufen ohne Envelope: setup erlaubt', async ({ page, browser }) => {
-    await registerPasskey(page, '/uebersicht');
-    await settleJournalHabitBoot(page);
-    await seedTasks(PULL_PAGE_LIMIT, 'Seed #1135 ');
-    // Kein journalSetup — kein journal_keys-Eintrag existiert für dieses Konto.
-
-    const deviceB = await openGatedDevice(browser, page, () => true);
-
-    await expect.poll(() => deviceB.evaluate(() => window.__starship.journalLockState())).toBe('setup');
 
     await deviceB.close();
   });

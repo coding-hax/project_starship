@@ -19,7 +19,7 @@ function subscribe(query: string, callback: () => void): () => void {
  * case where a component has to make the same breakpoint decision in JS —
  * e.g. moving a node into a slot that must not exist in the DOM at all below
  * the threshold (issue #1117 AK3: `.page-head__extra` has to be entirely
- * absent below 1440px for the pre-existing `seitenkopf.spec.ts` assertions).
+ * absent below 1440px).
  */
 export function useMinWidth(px: number): boolean {
   const query = `(min-width: ${px}px)`;
