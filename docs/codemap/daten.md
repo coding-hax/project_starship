@@ -7,7 +7,7 @@
 - `index.ts` / `migrate.ts` — DB-Verbindung, Migrationen anwenden
 - `migrations/` — generierte Migrationen, nie von Hand
 - `migrations/down/` — Down-Pfad je Migration
-- `storage-quota.ts` — Je-Konto-Speicherlimit: Messung + Default/Override, fail-open
+- `storage-quota.ts` — Speicherlimit je Konto, Default/Override, fail-open
 
 ## src/local
 
@@ -19,7 +19,8 @@
 
 ## src/auth
 
-- `session.ts` / `auth-response.ts` / `device-cookie.ts` — Session-Token+requireUser(); 401/403-Antwort; Geräte-Etikett
+- `session.ts` / `auth-response.ts` / `device-cookie.ts` — Session+requireUser()/requireAdmin(); 401/403/404-Antwort; Geräte-Etikett
+- `activity.ts` — last_seen_at/user_activity_days, 1×/h gedrosselt
 - `session-cookie.ts` — nur SESSION_COOKIE, von `middleware.ts` Edge-Runtime-ladbar
 - `webauthn.ts` / `rate-limit.ts` — Challenges/Credentials/Recovery; Fixed-Window-Limit, fail-open bei DB-Fehler
 - `invite.ts` — Einladungs-Tokens: erzeugen, prüfen, einmalig einlösen
@@ -36,4 +37,4 @@
 ## src/push
 
 - `vapid.ts` / `send.ts` / `notification.ts` / `schedule.ts` — VAPID+Versand (löscht ungültige); Payload-Logik, DST-Slots
-- `reminders/{index,tasks-due,habits-open,interaction-limit,events-due,reminder-kinds}.ts` — Registry+Kind-Metadaten; Aufgaben/Routinen/Ablauf; „15 Min. vorher" je Termin
+- `reminders/{index,tasks-due,habits-open,interaction-limit,events-due,reminder-kinds}.ts` — Registry+Kind-Metadaten; Aufgaben/Routinen/Ablauf; 15-Min.-Vorlauf je Termin

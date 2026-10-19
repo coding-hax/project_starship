@@ -23,4 +23,4 @@
 
 - `ci.yml` / `guards.yml` — Lint/Typecheck/Vitest/Playwright, Test-Integrity-Gate
 - `smoke.yml` / `reminders.yml` — Post-Deploy-Smoke (Auto-Revert); Cron Push-Reminder
-- `backup.yml` — nächtlicher pg_dump der ganzen DB, Secrets-gated, generisches Upload-Ziel
+- `backup.yml` — nächtlicher pg_dump der DB, Secrets-gated, generisches Upload-Ziel

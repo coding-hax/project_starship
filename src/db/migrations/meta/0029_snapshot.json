@@ -1,5 +1,5 @@
 {
-  "id": "f441b677-5db5-41e3-8af8-bbee4274c5d7",
+  "id": "5ac7486d-0cb3-4ce4-bde8-6c62cb5666c1",
   "prevId": "6ca2855e-8e34-41d5-8e70-d6fd651507d1",
   "version": "7",
   "dialect": "postgresql",
@@ -2625,6 +2625,53 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.user_activity_days": {
+      "name": "user_activity_days",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "day": {
+          "name": "day",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "user_activity_days_user_id_users_id_fk": {
+          "name": "user_activity_days_user_id_users_id_fk",
+          "tableFrom": "user_activity_days",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "user_activity_days_user_id_day_pk": {
+          "name": "user_activity_days_user_id_day_pk",
+          "columns": [
+            "user_id",
+            "day"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.users": {
       "name": "users",
       "schema": "",
@@ -2664,12 +2711,6 @@
         "last_seen_at": {
           "name": "last_seen_at",
           "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "storage_limit_bytes": {
-          "name": "storage_limit_bytes",
-          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         }
