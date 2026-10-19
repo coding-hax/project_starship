@@ -122,6 +122,6 @@ test('App sperren entfernt das Abo des Geräts, damit die nächste Person keine 
   await page.getByRole('button', { name: 'App sperren' }).click();
   await page.getByRole('button', { name: 'Sperren' }).click();
 
-  await expect(page).toHaveURL(/\/anmelden/);
+  await page.waitForURL('**/anmelden');
   expect(await pushRowCount()).toBe(0);
 });
