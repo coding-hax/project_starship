@@ -40,6 +40,12 @@ export const syncSeq = pgSequence('sync_seq');
  *
  * `displayName` is a label the admin assigns to recognise the account in /admin.
  * It is never user content and never shown to anyone but an admin.
+ *
+ * `storageLimitBytes` is the per-account quota (#1205, S6): `NULL` means "use
+ * `DEFAULT_STORAGE_LIMIT_BYTES`" (`src/db/storage-quota.ts`), a number is a
+ * per-account override. Nullable rather than defaulted in the column itself, so
+ * raising the code-wide default later changes every account that never got an
+ * explicit override, not just new ones.
  */
 export const users = pgTable(
   'users',
@@ -50,6 +56,7 @@ export const users = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     blockedAt: timestamp('blocked_at', { withTimezone: true }),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    storageLimitBytes: bigint('storage_limit_bytes', { mode: 'number' }),
   },
   (table) => [index('users_role_idx').on(table.role)],
 );
@@ -573,22 +580,25 @@ export const pushSubscriptions = pgTable(
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 
 /**
- * Fixed-window request counter for the unauthenticated auth endpoints (issue #755).
- * Server-/infra-only like `sessions`/`auth_challenges` above — no `syncColumns`, never
- * in `SYNC_TABLES`, no Dexie counterpart.
+ * Fixed-window request counter, originally for the unauthenticated auth endpoints
+ * (issue #755), extended by `'ics'` (#1205, S6) to an authenticated, per-account
+ * budget. Server-/infra-only like `sessions`/`auth_challenges` above — no
+ * `syncColumns`, never in `SYNC_TABLES`, no Dexie counterpart.
  *
  * One row per `(bucket, key, window_start)`, `count` incremented atomically
  * (`onConflictDoUpdate`, see `src/auth/rate-limit.ts`) rather than one row per hit —
  * row count stays O(keys × windows), not O(attack requests). `bucket` separates the
  * generous `options` budget from the stricter `recovery` budget (AC3); `key` is the
- * caller's IP (`src/auth/rate-limit.ts` `clientKey`). Pruned on every write, same
- * pattern as `storeChallenge` for `auth_challenges`.
+ * caller's IP for the auth buckets (`src/auth/rate-limit.ts` `clientKey`), but the
+ * account's `userId` for `'ics'` — a shared proxy budget keyed by IP would let one
+ * account on a NATed network starve every other account behind the same address.
+ * Pruned on every write, same pattern as `storeChallenge` for `auth_challenges`.
  */
 export const authRateLimits = pgTable(
   'auth_rate_limits',
   {
     id: uuid('id').primaryKey(),
-    bucket: text('bucket').$type<'options' | 'recovery' | 'invite'>().notNull(),
+    bucket: text('bucket').$type<'options' | 'recovery' | 'invite' | 'ics'>().notNull(),
     key: text('key').notNull(),
     windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
     count: integer('count').notNull().default(0),

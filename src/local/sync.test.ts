@@ -429,6 +429,17 @@ describe('push', () => {
     expect(markFailedMock).not.toHaveBeenCalled();
   });
 
+  it('keeps a quota-rejected mutation queued with the offline flag instead of counting it as a sync failure (#1205 AC6)', async () => {
+    pendingMock.mockResolvedValue([outboxEntry({ id: 'm1' })]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, false, 413)));
+
+    await push();
+
+    expect(markFailedMock).toHaveBeenCalledWith(['m1'], 'quota', true);
+    expect(wipeLocalDatabaseMock).not.toHaveBeenCalled();
+    expect(markBlockedMock).not.toHaveBeenCalled();
+  });
+
   it('bounds the fetch to a timeout so a request that never settles cannot wedge sync() forever (#954)', async () => {
     pendingMock.mockResolvedValue([outboxEntry({ id: 'm1' })]);
     const response: PushResponse = { applied: ['m1'], conflicts: [], rejected: [] };

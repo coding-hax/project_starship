@@ -1,0 +1,44 @@
+name: Nächtliches Backup
+
+# #1205 (S6): pg_dump der gesamten Postgres-DB -- deckt jedes Konto automatisch
+# ab (ADR-0031, kein Konto-weiser Dump nötig). Secrets-gated im selben Muster wie
+# reminders.yml: fehlt ein Secret, bricht der Lauf laut ab statt leise nichts zu
+# tun. Vendor-neutral mit Absicht (ADR-0001) -- ein gewöhnlicher pg_dump + HTTP-
+# Upload, kein Vercel- oder Neon-Backup-Primitiv; auf einem eigenen Server
+# genügt später derselbe Befehl per crontab. Minute/Stunde abseits von
+# reminders.yml (7/37), damit kein Gleichlauf entsteht.
+on:
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: pg_dump + Upload
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_UPLOAD_URL: ${{ secrets.BACKUP_UPLOAD_URL }}
+        run: |
+          if [ -z "$BACKUP_DATABASE_URL" ] || [ -z "$BACKUP_UPLOAD_URL" ]; then
+            echo "BACKUP_DATABASE_URL oder BACKUP_UPLOAD_URL fehlt als Repo-Secret -- Abbruch." >&2
+            exit 1
+          fi
+
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+          DUMP_FILE="starship-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+          pg_dump "$BACKUP_DATABASE_URL" | gzip > "$DUMP_FILE"
+
+          # BACKUP_UPLOAD_URL ist absichtlich generisch (ein beliebiges HTTP-PUT-
+          # Ziel, z.B. eine vorsignierte Objektspeicher-URL) -- welcher Anbieter
+          # dahinter steckt, entscheidet der Mensch beim Deploy, nicht dieser Workflow.
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' --upload-file "$DUMP_FILE" "$BACKUP_UPLOAD_URL")
+          echo "Upload-Status: $STATUS"
+
+          case "$STATUS" in
+            2??) echo "✓ Backup hochgeladen: $DUMP_FILE" ;;
+            *) echo "✗ Unerwarteter Status $STATUS." >&2; exit 1 ;;
+          esac
