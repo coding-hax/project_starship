@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import { NextResponse } from 'next/server';
 import { authErrorResponse } from './auth-response';
 import { NotAdminError, requireAdmin, type SessionUser } from './session';
@@ -7,16 +7,28 @@ import { relyingParty } from './webauthn';
 export type AdminGuardResult = { admin: SessionUser } | { error: NextResponse };
 
 /**
+ * A path that matches no route anywhere in this app — the redirect target
+ * `guardAdmin()` and the `(admin)` layout share (AK5). `notFound()` thrown from
+ * a MATCHED segment (a route handler as much as a layout) still answers with
+ * that segment's own prefetch manifest/script preloads, so its response is
+ * never byte-identical to a genuinely unmatched route — confirmed by e2e, a
+ * few hundred bytes apart (Route Handlers go further: `notFound()` there
+ * produces an EMPTY body, not even a rendered page). A redirect forces a fresh,
+ * truly unmatched request instead, which Next renders exactly like any other
+ * 404 — because, after the client follows the redirect, it is one.
+ */
+export const ADMIN_NOT_FOUND_PATH = '/__admin-existiert-nicht__';
+
+/**
  * The one gate every route under `src/app/api/admin/` calls (#1224 AK2) —
  * `tests/admin-routes-guarded.test.ts` greps every route file for this name and
  * fails if one forgets it.
  *
- * `NotAdminError` renders Next's default 404 via `notFound()` instead of the
+ * `NotAdminError` redirects to `ADMIN_NOT_FOUND_PATH` instead of returning the
  * `{error:'not-found'}` JSON `authErrorResponse()` used to return (AK5): a
  * signed-in non-admin account must see `/api/admin/*` as indistinguishable from
- * a route that does not exist, byte-for-byte, and only Next's own 404 can match
- * byte-for-byte what Next itself renders for an unknown path. `authErrorResponse()`
- * still carries 401 (no session) and 403 (blocked account) — those are not about
+ * a route that does not exist, byte-for-byte. `authErrorResponse()` still
+ * carries 401 (no session) and 403 (blocked account) — those are not about
  * whether the route exists.
  *
  * `mutating: true` additionally requires the request's `Origin` to match this
@@ -32,7 +44,7 @@ export async function guardAdmin(
   try {
     admin = await requireAdmin();
   } catch (error) {
-    if (error instanceof NotAdminError) notFound();
+    if (error instanceof NotAdminError) redirect(ADMIN_NOT_FOUND_PATH);
     const response = authErrorResponse(error);
     if (response) return { error: response };
     throw error;
