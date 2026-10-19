@@ -119,9 +119,16 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
         createdAt: users.createdAt,
         lastSeenAt: users.lastSeenAt,
         blockedAt: users.blockedAt,
-        credentialCount: sql<string>`(select count(*) from ${credentials} where ${credentials.userId} = ${users.id})`,
-        sessionCount: sql<string>`(select count(*) from ${sessions} where ${sessions.userId} = ${users.id} and ${sessions.expiresAt} > now())`,
-        activeDays30: sql<string>`(select count(*) from ${userActivityDays} where ${userActivityDays.userId} = ${users.id} and ${userActivityDays.day} >= current_date - 30)`,
+        // `"users"."id"` is hand-qualified, not `${users.id}`: drizzle's `sql` template
+        // prints a bare `Column` as just `"id"`, with no table prefix, even inside a
+        // correlated subquery — and `credentials`/`sessions` each have their *own*
+        // `id` column, so the unqualified reference silently bound to the wrong table
+        // (`credentials.id`/`sessions.id` instead of the outer `users.id`), making every
+        // count always 0 instead of actually correlating. `user_activity_days` has no
+        // `id` column of its own, which is why that one subquery happened to still work.
+        credentialCount: sql<string>`(select count(*) from ${credentials} where ${credentials.userId} = "users"."id")`,
+        sessionCount: sql<string>`(select count(*) from ${sessions} where ${sessions.userId} = "users"."id" and ${sessions.expiresAt} > now())`,
+        activeDays30: sql<string>`(select count(*) from ${userActivityDays} where ${userActivityDays.userId} = "users"."id" and ${userActivityDays.day} >= current_date - 30)`,
       })
       .from(users)
       .orderBy(users.createdAt),
