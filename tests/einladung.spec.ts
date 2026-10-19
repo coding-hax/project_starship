@@ -256,17 +256,28 @@ test('AK7: mehrere fehlgeschlagene Invite-Versuche sperren das Invite-Budget, op
 
 test('AK8: eine angemeldete Sitzung legt ohne Invite einen zweiten Passkey am selben Konto an', async ({
   page,
+  browser,
 }) => {
   await abortWeather(page);
   await registerPasskey(page);
   const before = await credentialCount();
 
-  const optionsRes = await page.request.post('/api/auth/register/options');
+  // A second passkey needs a second authenticator: reusing `page`'s would hand the
+  // server the same credential it already excludes to stop one authenticator
+  // registering twice (InvalidStateError) — same reasoning as `openRecoveryDevice`
+  // in auth-recovery-register.spec.ts. The session cookie carries over so this
+  // "device" is still the signed-in owner, just with its own empty authenticator.
+  const storageState = await page.context().storageState();
+  const context = await browser.newContext({ storageState });
+  const devicePage = await context.newPage();
+  await enableVirtualAuthenticator(devicePage);
+
+  const optionsRes = await devicePage.request.post('/api/auth/register/options');
   expect(optionsRes.status()).toBe(200);
   const options = await optionsRes.json();
 
-  const response = await createRegistrationCredential(page, options);
-  const verifyRes = await page.request.post('/api/auth/register/verify', {
+  const response = await createRegistrationCredential(devicePage, options);
+  const verifyRes = await devicePage.request.post('/api/auth/register/verify', {
     data: { response, challenge: options.challenge, label: 'Zweitgerät' },
   });
   const body = await verifyRes.json();
@@ -276,4 +287,6 @@ test('AK8: eine angemeldete Sitzung legt ohne Invite einen zweiten Passkey am se
   // Not firstCredential any more — no fresh recovery code for an added device.
   expect(body.recoveryCode).toBeNull();
   expect(await credentialCount()).toBe(before + 1);
+
+  await context.close();
 });
