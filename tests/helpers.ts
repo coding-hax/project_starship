@@ -1,7 +1,9 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { expect, type Browser, type Page } from '@playwright/test';
 import type {
+  AuthenticationResponseJSON,
   PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
   RegistrationResponseJSON,
 } from '@simplewebauthn/server';
 import { Client } from 'pg';
@@ -110,6 +112,76 @@ export async function createRegistrationCredential(
       },
     } as unknown as RegistrationResponseJSON;
   }, optionsJSON);
+}
+
+/**
+ * Drives `navigator.credentials.get()` by hand against an authentication-options
+ * response — same reasoning as `createRegistrationCredential`: the step-up
+ * ceremony (#1224 AK10) has no UI entry point when a test calls the admin API
+ * directly instead of clicking through `/admin`, so this inlines the plumbing
+ * `startAuthentication` (@simplewebauthn/browser) normally hides.
+ */
+export async function createAuthenticationAssertion(
+  page: Page,
+  optionsJSON: PublicKeyCredentialRequestOptionsJSON,
+): Promise<AuthenticationResponseJSON> {
+  return page.evaluate(async (options) => {
+    function base64UrlToBuffer(value: string): ArrayBuffer {
+      const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+      const raw = atob(padded);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+      return bytes.buffer;
+    }
+    function bufferToBase64Url(buffer: ArrayBuffer): string {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    const publicKey = {
+      ...options,
+      challenge: base64UrlToBuffer(options.challenge),
+      allowCredentials: (options.allowCredentials ?? []).map((credential) => ({
+        ...credential,
+        id: base64UrlToBuffer(credential.id),
+      })),
+    };
+
+    const credential = (await navigator.credentials.get({
+      publicKey: publicKey as unknown as PublicKeyCredentialRequestOptions,
+    })) as PublicKeyCredential;
+    const response = credential.response as AuthenticatorAssertionResponse;
+
+    return {
+      id: credential.id,
+      rawId: bufferToBase64Url(credential.rawId),
+      type: credential.type,
+      clientExtensionResults: credential.getClientExtensionResults(),
+      response: {
+        clientDataJSON: bufferToBase64Url(response.clientDataJSON),
+        authenticatorData: bufferToBase64Url(response.authenticatorData),
+        signature: bufferToBase64Url(response.signature),
+        userHandle: response.userHandle ? bufferToBase64Url(response.userHandle) : undefined,
+      },
+    } as unknown as AuthenticationResponseJSON;
+  }, optionsJSON);
+}
+
+/**
+ * Runs the full step-up ceremony (#1224 AK10) against `/api/admin/step-up/options`
+ * and returns the `{ challenge, assertion }` body a destructive admin action
+ * expects — for tests that call the API directly instead of clicking through
+ * `/admin`. `page` must belong to a context whose CDP virtual authenticator
+ * holds the signed-in admin's own passkey (see `freshAdminDevice`).
+ */
+export async function performStepUp(page: Page): Promise<{ challenge: string; assertion: AuthenticationResponseJSON }> {
+  const optionsResponse = await page.request.post('/api/admin/step-up/options');
+  const options = (await optionsResponse.json()) as PublicKeyCredentialRequestOptionsJSON;
+  const assertion = await createAuthenticationAssertion(page, options);
+  return { challenge: options.challenge, assertion };
 }
 
 /**
@@ -468,6 +540,63 @@ export async function createOtherAccount(label = 'Fremdkonto'): Promise<{
   });
 
   return { userId, titles };
+}
+
+/**
+ * `credentials` has no session scoping (single-user-at-a-time app) — tests that
+ * need an exact starting count clear it first rather than guessing what an
+ * earlier spec left behind. Session validity never depends on this table
+ * (`/api/auth/status` reads only `getSession()`), so this cannot break login
+ * for whichever spec runs next (#854, #1102, #1224).
+ */
+export async function deleteAllCredentials(): Promise<void> {
+  await withDb((client) => client.query('DELETE FROM credentials'));
+}
+
+/**
+ * `sessions` has no scoping either — `deleteAllCredentials()` only clears
+ * sessions bound to a credential (`ON DELETE CASCADE`), so a throwaway session
+ * minted without one outlives its test.
+ */
+export async function deleteAllSessions(): Promise<void> {
+  await withDb((client) => client.query('DELETE FROM sessions'));
+}
+
+/**
+ * A fresh browser context + page whose OWN CDP virtual authenticator holds the
+ * admin's only passkey. Needed whenever a test must complete a REAL WebAuthn
+ * ceremony as the admin — a step-up confirmation (#1224 AK10) as much as a
+ * device-binding assertion (#1102) — because the shared `AUTH_STATE` session's
+ * passkey was registered on the `setup` project's own page, and a CDP virtual
+ * authenticator never carries private key material across pages.
+ *
+ * Wipes every credential and session on the installation first (see above),
+ * then redeems a fresh invite pre-bound to the existing admin account — the
+ * same shape `scripts/bootstrap-admin.ts` produces. Destructive and never
+ * written back to `AUTH_STATE`, same reasoning as `nonAdminContext`.
+ */
+export async function freshAdminDevice(
+  browser: Browser,
+): Promise<{ context: Awaited<ReturnType<Browser['newContext']>>; page: Page; credentialId: string }> {
+  const adminId = await currentAccountId();
+  await deleteAllCredentials();
+  await deleteAllSessions();
+  const token = await seedInvite({ createdBy: adminId, userId: adminId });
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await enableVirtualAuthenticator(page);
+
+  await page.goto(`/einladung/${token}`);
+  await page.getByRole('button', { name: 'Passkey einrichten' }).click();
+  await page.getByTestId('recovery-code').waitFor();
+  await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
+  await page.waitForURL('**/uebersicht');
+
+  const { rows } = await withDb((client) =>
+    client.query('SELECT id FROM credentials ORDER BY created_at DESC LIMIT 1'),
+  );
+  return { context, page, credentialId: rows[0].id as string };
 }
 
 /**

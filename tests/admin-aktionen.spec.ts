@@ -6,6 +6,8 @@ import {
   createThrowawayCredential,
   createThrowawaySession,
   currentAccountId,
+  freshAdminDevice,
+  performStepUp,
   registerPasskey,
   resetAppData,
   setAccountBlocked,
@@ -77,9 +79,13 @@ test('AK2: Entsperren räumt blocked_at, lässt Daten unverändert', async ({ pa
   expect(await auditCount('unblock')).toBe(before + 1);
 });
 
-test('AK3/AK8: Zugang neu ausstellen widerruft Geräte und Sitzungen, erzeugt genau einen frischen, gebundenen Link, der nach Neuladen verschwindet', async ({
-  page,
+test('AK3/AK8/AK10: Zugang neu ausstellen verlangt Step-up, widerruft Geräte und Sitzungen, erzeugt genau einen frischen, gebundenen Link, der nach Neuladen verschwindet', async ({
+  browser,
 }) => {
+  // Step-up (#1224 AK10) needs a real WebAuthn ceremony against the admin's own
+  // passkey — the shared AUTH_STATE session's passkey lives on the `setup`
+  // project's own page, whose CDP virtual authenticator this page cannot reach.
+  const { context, page } = await freshAdminDevice(browser);
   const other = await createOtherAccount('Reissuekonto');
   const credentialId = await createThrowawayCredential({ userId: other.userId });
   await createThrowawaySession(credentialId, undefined, other.userId);
@@ -107,11 +113,32 @@ test('AK3/AK8: Zugang neu ausstellen widerruft Geräte und Sitzungen, erzeugt ge
   const cardAfterReload = page.locator('li.admin-overview__account', { hasText: 'Reissuekonto' });
   await expect(cardAfterReload.getByText(/\/einladung\//)).toHaveCount(0);
   await expect(cardAfterReload.getByRole('button', { name: 'Neu ausstellen' })).toBeVisible();
+
+  await context.close();
 });
 
-test('AK4: Journal löschen braucht die doppelte Bestätigung und löscht journal_entries/journal_keys hart, andere Daten bleiben', async ({
-  page,
+test('AK10: Zugang neu ausstellen ohne Step-up scheitert mit 403, ändert nichts', async ({ page, baseURL }) => {
+  const other = await createOtherAccount('Reissueverweigert');
+
+  const response = await page.request.post(`/api/admin/accounts/${other.userId}/reissue`, {
+    headers: { origin: baseURL! },
+  });
+  expect(response.status()).toBe(403);
+  expect((await response.json()).error).toBe('step-up-required');
+
+  const invite = await withDb((client) =>
+    client.query(
+      "SELECT count(*)::int AS n FROM invites WHERE user_id = $1 AND used_at IS NULL AND expires_at > now()",
+      [other.userId],
+    ),
+  );
+  expect(invite.rows[0].n).toBe(0);
+});
+
+test('AK4/AK10: Journal löschen braucht die doppelte Bestätigung + Step-up und löscht journal_entries/journal_keys hart, andere Daten bleiben', async ({
+  browser,
 }) => {
+  const { context, page } = await freshAdminDevice(browser);
   const other = await createOtherAccount('Journalkonto');
   const before = await auditCount('delete-journal');
   expect(await tableCount('journal_entries', other.userId)).toBe(1);
@@ -143,6 +170,19 @@ test('AK4: Journal löschen braucht die doppelte Bestätigung und löscht journa
   expect(await tableCount('journal_keys', other.userId)).toBe(0);
   expect(await tableCount('tasks', other.userId)).toBe(1);
   expect(await auditCount('delete-journal')).toBe(before + 1);
+
+  await context.close();
+});
+
+test('AK10: Journal löschen ohne Step-up scheitert mit 403, ändert nichts', async ({ page, baseURL }) => {
+  const other = await createOtherAccount('Journalverweigert');
+
+  const response = await page.request.delete(`/api/admin/accounts/${other.userId}/journal`, {
+    headers: { origin: baseURL! },
+  });
+  expect(response.status()).toBe(403);
+  expect((await response.json()).error).toBe('step-up-required');
+  expect(await tableCount('journal_entries', other.userId)).toBe(1);
 });
 
 test('AK4: Abbrechen löscht nichts', async ({ page }) => {
@@ -158,9 +198,10 @@ test('AK4: Abbrechen löscht nichts', async ({ page }) => {
   expect(await tableCount('journal_entries', other.userId)).toBe(1);
 });
 
-test('AK5/AK8: Konto löschen verlangt das Eintippen des Etiketts, räumt jede user_id-Tabelle leer', async ({
-  page,
+test('AK5/AK8/AK10: Konto löschen verlangt das Eintippen des Etiketts + Step-up, räumt jede user_id-Tabelle leer', async ({
+  browser,
 }) => {
+  const { context, page } = await freshAdminDevice(browser);
   const other = await createOtherAccount('Löschkonto');
   const before = await auditCount('delete-account');
 
@@ -202,6 +243,21 @@ test('AK5/AK8: Konto löschen verlangt das Eintippen des Etiketts, räumt jede u
   expect(audit.rows[0].target_user_id).toBeNull();
   expect(audit.rows[0].target_label).toBe('Löschkonto');
   expect(await auditCount('delete-account')).toBe(before + 1);
+
+  await context.close();
+});
+
+test('AK10: Konto löschen ohne Step-up scheitert mit 403, Konto bleibt', async ({ page, baseURL }) => {
+  const other = await createOtherAccount('Löschverweigert');
+
+  const response = await page.request.delete(`/api/admin/accounts/${other.userId}`, {
+    headers: { origin: baseURL! },
+  });
+  expect(response.status()).toBe(403);
+  expect((await response.json()).error).toBe('step-up-required');
+
+  const stillThere = await withDb((client) => client.query('SELECT 1 FROM users WHERE id = $1', [other.userId]));
+  expect(stillThere.rows.length).toBe(1);
 });
 
 test('AK6: die eigene Zeile zeigt keine Aktionsknöpfe, und die API weist einen direkten Zugriff auf die eigene id ab', async ({
@@ -228,17 +284,38 @@ test('AK6: die eigene Zeile zeigt keine Aktionsknöpfe, und die API weist einen 
   expect(blockResponse.status()).toBe(403);
   expect((await blockResponse.json()).error).toBe('self');
 
+  // DELETE now sits behind Step-up (#1224 AK10) first — without one it never
+  // reaches the self-check below.
+  const deleteWithoutStepUp = await page.request.delete(`/api/admin/accounts/${adminId}`, {
+    headers: { origin: baseURL! },
+  });
+  expect(deleteWithoutStepUp.status()).toBe(403);
+  expect((await deleteWithoutStepUp.json()).error).toBe('step-up-required');
+});
+
+test('AK6/AK10: ein Löschversuch auf die eigene id scheitert an "self", selbst mit gültigem Step-up', async ({
+  browser,
+  baseURL,
+}) => {
+  const { context, page } = await freshAdminDevice(browser);
+  const adminId = await currentAccountId();
+
+  const { challenge, assertion } = await performStepUp(page);
   const deleteResponse = await page.request.delete(`/api/admin/accounts/${adminId}`, {
     headers: { origin: baseURL! },
+    data: { challenge, assertion },
   });
   expect(deleteResponse.status()).toBe(403);
   expect((await deleteResponse.json()).error).toBe('self');
+
+  await context.close();
 });
 
 test('AK7: ein zweites Admin-Konto lässt sich löschen, aber das letzte Admin-Konto ist serverseitig geschützt', async ({
-  page,
+  browser,
   baseURL,
 }) => {
+  const { context, page } = await freshAdminDevice(browser);
   const secondAdminId = randomUUID();
   await withDb((client) =>
     client.query("INSERT INTO users (id, role, display_name) VALUES ($1, 'admin', 'Zweiter Admin')", [
@@ -246,8 +323,10 @@ test('AK7: ein zweites Admin-Konto lässt sich löschen, aber das letzte Admin-K
     ]),
   );
 
+  const { challenge, assertion } = await performStepUp(page);
   const deleteSecond = await page.request.delete(`/api/admin/accounts/${secondAdminId}`, {
     headers: { origin: baseURL! },
+    data: { challenge, assertion },
   });
   expect(deleteSecond.status()).toBe(200);
   const remaining = await withDb((client) => client.query("SELECT count(*)::int AS n FROM users WHERE role = 'admin'"));
@@ -263,6 +342,8 @@ test('AK7: ein zweites Admin-Konto lässt sich löschen, aber das letzte Admin-K
   expect(result).toBe('last-admin');
   const stillThere = await withDb((client) => client.query('SELECT 1 FROM users WHERE id = $1', [onlyAdminId]));
   expect(stillThere.rows.length).toBe(1);
+
+  await context.close();
 });
 
 test('AK9: keine Antwort einer Aktions-Route enthält Nutzerinhalt', async ({ page, baseURL }) => {

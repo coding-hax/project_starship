@@ -78,10 +78,12 @@ test('AK6: GET unter /api/admin/* löst keine Aktion aus (CSRF-sicher ohne Origi
   expect(response.ok()).toBe(true);
 });
 
-test('AK8: /admin und /api/admin/accounts tragen Cache-Control: no-store', async ({ page }) => {
-  const pageResponse = await page.goto('/admin');
-  expect(pageResponse?.headers()['cache-control']).toBe('no-store');
-
+// AK8's page-level Cache-Control assertion lives in admin-cache.prod.spec.ts —
+// Next's dev server unconditionally overwrites a page's Cache-Control with
+// `no-cache, must-revalidate`, so middleware.ts's own `no-store` only ever
+// survives in a production build. The API route isn't subject to that dev-only
+// override, so it stays here.
+test('AK8: /api/admin/accounts trägt Cache-Control: no-store', async ({ page }) => {
   const apiResponse = await page.request.get('/api/admin/accounts');
   expect(apiResponse.headers()['cache-control']).toBe('no-store');
 });

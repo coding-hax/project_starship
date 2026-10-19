@@ -1,12 +1,18 @@
 import { NextResponse } from 'next/server';
 import { guardAdmin } from '@/auth/admin-route';
+import { verifyStepUp } from '@/auth/step-up';
 import { deleteJournal } from '@/features/admin/account-actions';
 
-/** Journal hart löschen (S5, #1204 AK4) — getrennt von Konto löschen (AK5). */
+/** Journal hart löschen (S5, #1204 AK4) — getrennt von Konto löschen (AK5).
+ * Unumkehrbar, verlangt eine frische Passkey-Bestätigung (#1224 AK10). */
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const guard = await guardAdmin(request, { mutating: true });
   if ('error' in guard) return guard.error;
   const { admin } = guard;
+
+  if (!(await verifyStepUp(request, admin))) {
+    return NextResponse.json({ error: 'step-up-required' }, { status: 403 });
+  }
 
   const { id } = await params;
   const result = await deleteJournal(admin.userId, id);

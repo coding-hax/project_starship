@@ -8,9 +8,10 @@ import {
   createThrowawaySession,
   credentialRowExists,
   currentAccountId,
-  enableVirtualAuthenticator,
+  deleteAllCredentials,
+  deleteAllSessions,
+  freshAdminDevice,
   resetAppData,
-  seedInvite,
   sessionRowExists,
   withDb,
 } from './helpers';
@@ -50,29 +51,6 @@ async function credentialCount(): Promise<number> {
     client.query('SELECT count(*)::int AS n FROM credentials'),
   );
   return result.rows[0].n as number;
-}
-
-/**
- * `credentials` has no session scoping (single-user app) — AK3 needs an exact
- * starting count, so these destructive tests clear it first rather than guessing
- * what earlier specs left behind. Session validity never depends on this table
- * (`/api/auth/status` reads only `getSession()`), so this cannot break login for
- * whichever spec runs next.
- */
-async function deleteAllCredentials(): Promise<void> {
-  await withDb((client) => client.query('DELETE FROM credentials'));
-}
-
-/**
- * `sessions` has no scoping either. `deleteAllCredentials()` only clears sessions
- * bound to a credential (`ON DELETE CASCADE`, #854) — throwaway sessions minted via
- * `freshSessionContext`/`createThrowawaySession()` without a `credentialId` outlive
- * their test (only the browser context gets closed, never the DB row). The
- * session tests below assert exact counts of live sessions, so they need both
- * tables clean.
- */
-async function deleteAllSessions(): Promise<void> {
-  await withDb((client) => client.query('DELETE FROM sessions'));
 }
 
 test.describe('destruktiv (Wegwerf-Sitzung, frischer Context)', () => {
@@ -417,36 +395,6 @@ test.describe('#857: Sitzungen an einer Stelle, deutbare Zahl (destruktiv, frisc
 });
 
 test.describe('#1102: Anmeldungen je (Passkey, Gerät) (destruktiv, frischer Context)', () => {
-  /**
-   * The full ceremony inline rather than `registerPasskey` — that helper writes
-   * `AUTH_STATE`, and these tests delete every credential and session, so the
-   * shared storage state must not be re-pointed at one of them (same reason the
-   * #857 block above does it by hand).
-   */
-  async function registerFreshDevice(browser: Browser) {
-    // Credential-less no longer opens registration on its own (#1202, AK5) — an
-    // invite pre-bound to the still-existing admin account stands in for "lost
-    // every device", same shape `scripts/bootstrap-admin.ts` produces.
-    const adminId = await currentAccountId();
-    await deleteAllCredentials();
-    await deleteAllSessions();
-    const token = await seedInvite({ createdBy: adminId, userId: adminId });
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    await enableVirtualAuthenticator(page);
-
-    await page.goto(`/einladung/${token}`);
-    await page.getByRole('button', { name: 'Passkey einrichten' }).click();
-    await page.getByTestId('recovery-code').waitFor();
-    await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
-    await page.waitForURL('**/uebersicht');
-
-    const { rows } = await withDb((client) =>
-      client.query('SELECT id FROM credentials ORDER BY created_at DESC LIMIT 1'),
-    );
-    return { context, page, credentialId: rows[0].id as string };
-  }
-
   async function deviceCookie(context: Awaited<ReturnType<Browser['newContext']>>) {
     return (await context.cookies()).find((cookie) => cookie.name === 'starship_device');
   }
@@ -507,7 +455,7 @@ test.describe('#1102: Anmeldungen je (Passkey, Gerät) (destruktiv, frischer Con
   test('AK2: der Login vergibt eine Geräte-ID — Cookie und sessions.device_id tragen denselben Wert, das Cookie überlebt die Sitzung', async ({
     browser,
   }) => {
-    const { context, credentialId } = await registerFreshDevice(browser);
+    const { context, credentialId } = await freshAdminDevice(browser);
 
     const device = await deviceCookie(context);
     expect(device).toBeDefined();
@@ -534,7 +482,7 @@ test.describe('#1102: Anmeldungen je (Passkey, Gerät) (destruktiv, frischer Con
   test('AK3: eine Anmeldung desselben Passkeys von einem anderen Gerät überlebt den Login', async ({
     browser,
   }) => {
-    const { context, page, credentialId } = await registerFreshDevice(browser);
+    const { context, page, credentialId } = await freshAdminDevice(browser);
 
     // Das zweite Apple-Gerät am selben Schlüsselbund: derselbe Passkey, andere
     // Geräte-ID. Vor #1102 hat der Login hier die andere Sitzung gelöscht.
@@ -550,7 +498,7 @@ test.describe('#1102: Anmeldungen je (Passkey, Gerät) (destruktiv, frischer Con
   test('AK4: Anmeldungen desselben Geräts und Altlasten ohne Geräte-ID werden weiterhin eingedampft', async ({
     browser,
   }) => {
-    const { context, page, credentialId } = await registerFreshDevice(browser);
+    const { context, page, credentialId } = await freshAdminDevice(browser);
     const device = await deviceCookie(context);
 
     const sameDevice = await createThrowawaySession(credentialId, device!.value);
@@ -568,7 +516,7 @@ test.describe('#1102: Anmeldungen je (Passkey, Gerät) (destruktiv, frischer Con
   test('AK5: ein verlorenes Geräte-Cookie heilt aus der Sitzungszeile, ohne eine zweite Anmeldung anzulegen', async ({
     browser,
   }) => {
-    const { context, page, credentialId } = await registerFreshDevice(browser);
+    const { context, page, credentialId } = await freshAdminDevice(browser);
     const before = await deviceCookie(context);
 
     async function sessionRows() {
