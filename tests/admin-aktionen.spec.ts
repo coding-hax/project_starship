@@ -206,6 +206,7 @@ test('AK5/AK8: Konto löschen verlangt das Eintippen des Etiketts, räumt jede u
 
 test('AK6: die eigene Zeile zeigt keine Aktionsknöpfe, und die API weist einen direkten Zugriff auf die eigene id ab', async ({
   page,
+  baseURL,
 }) => {
   const adminId = await currentAccountId();
   await createOtherAccount('Nebenkonto');
@@ -216,19 +217,27 @@ test('AK6: die eigene Zeile zeigt keine Aktionsknöpfe, und die API weist einen 
   await expect(page.locator('li.admin-overview__account')).toHaveCount(2);
   await expect(page.locator('.admin-overview__actions')).toHaveCount(1);
 
+  // `page.request` is Playwright's Node-side HTTP client, not a browser fetch —
+  // it never sends an `Origin` header on its own (#1224 AK6), so every direct
+  // call here sets one by hand to reach the self/last-admin business logic
+  // instead of the CSRF guard; `admin-sicherheit.spec.ts` covers the guard itself.
   const blockResponse = await page.request.patch(`/api/admin/accounts/${adminId}`, {
+    headers: { origin: baseURL! },
     data: { action: 'block' },
   });
   expect(blockResponse.status()).toBe(403);
   expect((await blockResponse.json()).error).toBe('self');
 
-  const deleteResponse = await page.request.delete(`/api/admin/accounts/${adminId}`);
+  const deleteResponse = await page.request.delete(`/api/admin/accounts/${adminId}`, {
+    headers: { origin: baseURL! },
+  });
   expect(deleteResponse.status()).toBe(403);
   expect((await deleteResponse.json()).error).toBe('self');
 });
 
 test('AK7: ein zweites Admin-Konto lässt sich löschen, aber das letzte Admin-Konto ist serverseitig geschützt', async ({
   page,
+  baseURL,
 }) => {
   const secondAdminId = randomUUID();
   await withDb((client) =>
@@ -237,7 +246,9 @@ test('AK7: ein zweites Admin-Konto lässt sich löschen, aber das letzte Admin-K
     ]),
   );
 
-  const deleteSecond = await page.request.delete(`/api/admin/accounts/${secondAdminId}`);
+  const deleteSecond = await page.request.delete(`/api/admin/accounts/${secondAdminId}`, {
+    headers: { origin: baseURL! },
+  });
   expect(deleteSecond.status()).toBe(200);
   const remaining = await withDb((client) => client.query("SELECT count(*)::int AS n FROM users WHERE role = 'admin'"));
   expect(remaining.rows[0].n).toBe(1);
@@ -254,18 +265,27 @@ test('AK7: ein zweites Admin-Konto lässt sich löschen, aber das letzte Admin-K
   expect(stillThere.rows.length).toBe(1);
 });
 
-test('AK9: keine Antwort einer Aktions-Route enthält Nutzerinhalt', async ({ page }) => {
+test('AK9: keine Antwort einer Aktions-Route enthält Nutzerinhalt', async ({ page, baseURL }) => {
   const other = await createOtherAccount('Inhaltskonto');
+  const origin = { origin: baseURL! };
 
   const blockResponse = await page.request.patch(`/api/admin/accounts/${other.userId}`, {
+    headers: origin,
     data: { action: 'block' },
   });
   const unblockResponse = await page.request.patch(`/api/admin/accounts/${other.userId}`, {
+    headers: origin,
     data: { action: 'unblock' },
   });
-  const reissueResponse = await page.request.post(`/api/admin/accounts/${other.userId}/reissue`);
-  const journalResponse = await page.request.delete(`/api/admin/accounts/${other.userId}/journal`);
-  const deleteResponse = await page.request.delete(`/api/admin/accounts/${other.userId}`);
+  const reissueResponse = await page.request.post(`/api/admin/accounts/${other.userId}/reissue`, {
+    headers: origin,
+  });
+  const journalResponse = await page.request.delete(`/api/admin/accounts/${other.userId}/journal`, {
+    headers: origin,
+  });
+  const deleteResponse = await page.request.delete(`/api/admin/accounts/${other.userId}`, {
+    headers: origin,
+  });
 
   const bodies = await Promise.all(
     [blockResponse, unblockResponse, reissueResponse, journalResponse, deleteResponse].map((response) =>

@@ -1,18 +1,12 @@
 import { NextResponse } from 'next/server';
-import { authErrorResponse } from '@/auth/auth-response';
-import { requireAdmin } from '@/auth/session';
+import { guardAdmin } from '@/auth/admin-route';
 import { deleteJournal } from '@/features/admin/account-actions';
 
 /** Journal hart löschen (S5, #1204 AK4) — getrennt von Konto löschen (AK5). */
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  let admin;
-  try {
-    admin = await requireAdmin();
-  } catch (error) {
-    const response = authErrorResponse(error);
-    if (response) return response;
-    throw error;
-  }
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const guard = await guardAdmin(request, { mutating: true });
+  if ('error' in guard) return guard.error;
+  const { admin } = guard;
 
   const { id } = await params;
   const result = await deleteJournal(admin.userId, id);

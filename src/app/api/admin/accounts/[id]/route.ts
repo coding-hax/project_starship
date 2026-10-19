@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authErrorResponse } from '@/auth/auth-response';
-import { requireAdmin } from '@/auth/session';
+import { guardAdmin } from '@/auth/admin-route';
 import { blockAccount, deleteAccount, unblockAccount } from '@/features/admin/account-actions';
 
 function statusOf(result: 'ok' | 'self' | 'not-found' | 'last-admin'): number {
@@ -15,14 +14,9 @@ function statusOf(result: 'ok' | 'self' | 'not-found' | 'last-admin'): number {
  * `credentials/[id]/route.ts`'s shape — never returns a content field (AK9).
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  let admin;
-  try {
-    admin = await requireAdmin();
-  } catch (error) {
-    const response = authErrorResponse(error);
-    if (response) return response;
-    throw error;
-  }
+  const guard = await guardAdmin(request, { mutating: true });
+  if ('error' in guard) return guard.error;
+  const { admin } = guard;
 
   const body = await request.json().catch(() => null);
   if (body === null || (body.action !== 'block' && body.action !== 'unblock')) {
@@ -40,15 +34,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 }
 
 /** Konto löschen (AK5/AK6/AK7). */
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  let admin;
-  try {
-    admin = await requireAdmin();
-  } catch (error) {
-    const response = authErrorResponse(error);
-    if (response) return response;
-    throw error;
-  }
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const guard = await guardAdmin(request, { mutating: true });
+  if ('error' in guard) return guard.error;
+  const { admin } = guard;
 
   const { id } = await params;
   const result = await deleteAccount(admin.userId, id);

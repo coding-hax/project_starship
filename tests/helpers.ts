@@ -470,6 +470,24 @@ export async function createOtherAccount(label = 'Fremdkonto'): Promise<{
   return { userId, titles };
 }
 
+/**
+ * A second, independent browser context signed in as a `role: 'user'` account
+ * — never the shared `AUTH_STATE` session, which is always the admin one.
+ * Shared by every spec that needs a non-admin view of `/admin`/`/api/admin/*`
+ * (#1203, #1224).
+ */
+export async function nonAdminContext(
+  browser: Browser,
+  baseURL: string | undefined,
+): Promise<{ page: Page; close: () => Promise<void> }> {
+  const other = await createOtherAccount('Nutzerkonto');
+  const session = await createThrowawaySession(undefined, undefined, other.userId);
+  const context = await browser.newContext();
+  await context.addCookies([{ name: 'starship_session', value: session.token, url: baseURL }]);
+  const page = await context.newPage();
+  return { page, close: () => context.close() };
+}
+
 /** Locks/unlocks an account — the server side of the 403 path (#1200 AK8). */
 export async function setAccountBlocked(userId: string, blocked: boolean): Promise<void> {
   await withDb((client) =>
