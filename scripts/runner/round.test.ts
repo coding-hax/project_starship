@@ -1484,8 +1484,12 @@ describe('roundPlan', () => {
       expect(result.status?.emoji).toBe('🔵');
       expect(result.status?.text).toContain('Versuch 2');
       expect(result.status?.text).toContain('`needs-answer` erst ab');
-      // Die CI-Wache (gh pr list) laeuft nicht mehr -- der Gate greift VORHER.
-      expect(called(calls, 'pr', 'list')).toBe(false);
+      // 'reopenFalselyClosedIssues' (isLead-Vorlauf) ruft 'pr list' ohnehin
+      // IMMER als Erstes -- das ist der eine erwartete Treffer. Ein zweiter
+      // (aus 'prForIssue' in der CI-Wache) waere das Zeichen, dass der Gate
+      // nicht gegriffen hat und doch bis dorthin durchgelaufen ist.
+      const prListCalls = calls.filter((args) => args.includes('pr') && args.includes('list'));
+      expect(prListCalls.length).toBe(1);
     });
 
     it('laesst den Takt normal weiterlaufen, sobald "transient-until" in der Vergangenheit liegt', () => {
