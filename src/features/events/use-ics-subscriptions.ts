@@ -9,6 +9,7 @@
 import { liveQuery } from 'dexie';
 import { useEffect, useState } from 'react';
 import { fetchIcsText } from '@/local/ics-fetch';
+import { ensureAccountChecked } from '@/local/account-isolation';
 import { db, type IcsSubscriptionEntry } from '@/local/dexie';
 import { ICS_REFRESH_INTERVAL_MS, expandIcsEvents, icsHorizon, isIcsStale } from './ics-expand';
 import { parseIcs } from './ics-parse';
@@ -20,6 +21,13 @@ import type { EventView } from './use-events';
  * cached before (same reasoning as `refreshIfStale` in the weather module).
  */
 export async function refreshStaleSubscriptions(): Promise<void> {
+  // Awaited before anything else (S2, #1201): on a device whose marker does not
+  // yet match the current session, `ensureAccountChecked()` wipes
+  // `db.icsSubscriptions` itself. Without this await, a boot-time write here
+  // could race that wipe and get erased moments after being written (same fix
+  // as outbox.mutate(), src/local/outbox.ts).
+  await ensureAccountChecked();
+
   const subscriptions = await db.icsSubscriptions.toArray();
   const horizon = icsHorizon();
 
