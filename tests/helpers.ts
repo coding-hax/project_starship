@@ -563,34 +563,35 @@ export async function deleteAllSessions(): Promise<void> {
 }
 
 /**
- * A fresh browser context + page whose OWN CDP virtual authenticator holds the
- * admin's only passkey. Needed whenever a test must complete a REAL WebAuthn
- * ceremony as the admin — a step-up confirmation (#1224 AK10) as much as a
- * device-binding assertion (#1102) — because the shared `AUTH_STATE` session's
- * passkey was registered on the `setup` project's own page, and a CDP virtual
- * authenticator never carries private key material across pages.
+ * A fresh browser context + page whose OWN CDP virtual authenticator holds a
+ * second passkey for the SAME admin account. Needed whenever a test must
+ * complete a REAL WebAuthn ceremony as the admin — a step-up confirmation
+ * (#1224 AK10) as much as a device-binding assertion (#1102) — because the
+ * shared `AUTH_STATE` session's passkey was registered on the `setup`
+ * project's own page, and a CDP virtual authenticator never carries private
+ * key material across pages.
  *
- * Wipes every credential and session on the installation first (see above),
- * then redeems a fresh invite pre-bound to the existing admin account — the
- * same shape `scripts/bootstrap-admin.ts` produces. Unlike `nonAdminContext`
- * (a genuinely different, non-admin account, never allowed to leak into the
- * shared file), this *is* the admin — `deleteAllSessions()` above just made the
- * shared `AUTH_STATE` cookie point at a row that no longer exists. Without
- * writing the fresh one back, the very next spec's cheap `registerPasskey`
- * check reads `authenticated: false` and — since #1202 removed the open
- * "Passkey einrichten" entry point — falls back to `seedBootstrapInvite()`,
- * minting an unrelated second admin account that `resetAppData()` can never
- * clean up (it deliberately spares every `role = 'admin'` row, see above).
- * Every further `freshAdminDevice` call in the same run compounds it, so
- * `/admin`'s account list quietly grows across a whole spec file
- * (`admin-aktionen.spec.ts` AK6 once saw 5 accounts where 2 were seeded).
+ * Redeems a fresh invite pre-bound to the existing admin account — the same
+ * shape `scripts/bootstrap-admin.ts` produces — exactly like "a second device
+ * from an already authenticated session" (`register/options`'s case 2):
+ * `register/verify` has no one-passkey-per-account rule, it only inserts a row,
+ * so this ADDS a credential rather than replacing one. Deliberately does
+ * **not** call `deleteAllCredentials()`/`deleteAllSessions()` or touch
+ * `AUTH_STATE`: an earlier version wiped the whole installation first, which
+ * invalidated the shared `AUTH_STATE` session for every other test in the run.
+ * Writing the fresh session back "fixed" that but only by making `AUTH_STATE`
+ * reliably point at a brand-new, still-live session at this exact moment —
+ * which then leaked into `browser.newContext()` calls elsewhere that assumed
+ * a context without an explicit `storageState` override starts out
+ * unauthenticated (it inherits the project's `storageState: AUTH_STATE`
+ * instead), e.g. `auth-geraete.spec.ts`'s AK6 "stranger" context picked up a
+ * live admin cookie and got 200 instead of the expected 401. Never wiping
+ * anything here means `AUTH_STATE` is never disturbed in the first place.
  */
 export async function freshAdminDevice(
   browser: Browser,
 ): Promise<{ context: Awaited<ReturnType<Browser['newContext']>>; page: Page; credentialId: string }> {
   const adminId = await currentAccountId();
-  await deleteAllCredentials();
-  await deleteAllSessions();
   const token = await seedInvite({ createdBy: adminId, userId: adminId });
 
   const context = await browser.newContext();
@@ -602,8 +603,6 @@ export async function freshAdminDevice(
   await page.getByTestId('recovery-code').waitFor();
   await page.getByRole('button', { name: 'Habe ich gespeichert' }).click();
   await page.waitForURL('**/uebersicht');
-
-  await context.storageState({ path: AUTH_STATE });
 
   const { rows } = await withDb((client) =>
     client.query('SELECT id FROM credentials ORDER BY created_at DESC LIMIT 1'),
