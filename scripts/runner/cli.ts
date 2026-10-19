@@ -67,6 +67,8 @@ export interface RunnerContext {
   /** Dieser Slot -- '1' in der Ein-Slot-Welt (AK9). */
   slotId: string;
   clock: Clock;
+  /** Wurzel aller Ticket-Worktrees (#1226) -- siehe round.ts, RoundContext. */
+  worktreeBase: string;
 }
 
 // Die meisten Kommandos folgen dem S1-Vertrag: String = Erfolg (stdout + \n,
@@ -350,6 +352,12 @@ function slotId(): string {
   return process.env.SLOT_ID ?? '1';
 }
 
+// claude-runner.sh exportiert WORKTREE_BASE genauso wie STATE_DIR/SHARED_DIR
+// (#1226) -- derselbe Default wie dort ($REPO_DIR/.claude/worktrees).
+function worktreeBase(): string {
+  return process.env.WORKTREE_BASE ?? join(here, '..', '..', '.claude', 'worktrees');
+}
+
 function defaultContext(): RunnerContext {
   return {
     gh: createGhAdapter(),
@@ -361,6 +369,7 @@ function defaultContext(): RunnerContext {
     lead: createLeadAdapter(join(sharedDir(), 'lead')),
     slotId: slotId(),
     clock: createClock(),
+    worktreeBase: worktreeBase(),
   };
 }
 

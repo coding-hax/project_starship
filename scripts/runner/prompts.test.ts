@@ -135,6 +135,27 @@ describe('prompts', () => {
     });
   });
 
+  // #1226, AK7: der zweite Parameter ist additiv -- ein Aufrufer ohne ihn
+  // bleibt unveraendert gueltig (wortgleich mit buildPrompt(42) oben, kein
+  // Carry-over-Abschnitt).
+  describe('Carry-over uncommitteter Aenderungen (#1226, AK7)', () => {
+    it('bleibt ohne zweites Argument unveraendert -- kein Carry-over-Abschnitt', () => {
+      expect(buildPrompt(42)).not.toContain('Nicht committete Arbeit');
+    });
+
+    it('nennt eine uebergebene Dateiliste als eigenen Abschnitt vor "Ablauf"', () => {
+      const prompt = buildPrompt(42, ' M scripts/runner/round.ts\n?? scripts/runner/round.test.ts');
+      expect(prompt).toContain('## Nicht committete Arbeit aus dem vorigen Lauf');
+      expect(prompt).toContain('M scripts/runner/round.ts');
+      expect(prompt).toContain('round.test.ts');
+      expect(prompt.indexOf('Nicht committete Arbeit')).toBeLessThan(prompt.indexOf('Ablauf:'));
+    });
+
+    it('bleibt mit einer leeren Dateiliste unveraendert', () => {
+      expect(buildPrompt(42, '')).toBe(buildPrompt(42));
+    });
+  });
+
   // #1147: der Bau-Prompt liest die Ticket-Historie gezielt statt bei jedem
   // Wiederaufsetzen routinemaessig vollstaendig -- bei #1101 waren Body plus
   // vier Kommentare 24.101 Zeichen, der groesste Teil davon totes Gewicht.

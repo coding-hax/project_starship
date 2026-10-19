@@ -143,12 +143,31 @@ Leerlauf-Warten ist kein zulässiger Schritt. Keine Füllkommandos ('sleep',
 mit der Begründung „ich warte auf einen Subagenten". Wer wartet, hat vorher
 committet und gepusht.`;
 
-export function buildPrompt(issue: number): string {
+// #1226, AK7: 'carriedOver' ist die Ausgabe von `git status --porcelain` im
+// Worktree eines abgebrochenen Laufs (nur bei einem fortgesetzten Bau-Lauf
+// befuellt, siehe round.ts). Leer = heutiges Verhalten, kein Abschnitt --
+// bestehende Aufrufer (ohne zweites Argument) bleiben unveraendert gueltig.
+function carriedOverSection(carriedOver: string): string {
+  if (carriedOver === '') return '';
+  return `
+
+## Nicht committete Arbeit aus dem vorigen Lauf
+
+Der vorige Lauf wurde von einem vorübergehenden API-Fehler abgebrochen, BEVOR
+er committen konnte. Diese Dateien liegen uncommittet im Worktree — setze dort
+an, verwirf sie NICHT blind:
+
+\`\`\`
+${carriedOver}
+\`\`\``;
+}
+
+export function buildPrompt(issue: number, carriedOver = ''): string {
   return `Du arbeitest UNBEAUFSICHTIGT. Es sitzt niemand am Terminal.
 
 Arbeite an Issue #${issue} in diesem Repo.
 
-${FILE_ACCESS_RULE}${NO_FIND_TICKETS_RULE}${SECURE_BEFORE_WAIT_RULE}
+${FILE_ACCESS_RULE}${NO_FIND_TICKETS_RULE}${SECURE_BEFORE_WAIT_RULE}${carriedOverSection(carriedOver)}
 
 Ablauf:
 1. Pflichtlektüre ist NUR CLAUDE.md und docs/CODEMAP.md. Nichts sonst liest du

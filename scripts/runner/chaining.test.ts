@@ -82,6 +82,7 @@ describe('Chaining-Entscheidung (#61)', () => {
     claims,
     slotId: '1',
     clock: CLOCK,
+    worktreeBase: '/worktrees',
   });
   const clean = { rc: 0, out: '{"session_id":"sid-1","result":"ok"}', timedOut: false, maxRuntime: 2700 };
 

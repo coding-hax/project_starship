@@ -33,7 +33,8 @@ import { prForIssue, reopenFalselyClosedIssues } from './pr.js';
 import { tierCurrent, tierFromLabels } from './tier.js';
 import { buildEscalationEval, type NonFailureEndReason } from './escalation.js';
 import { opusBuildCapReached, opusBuildCapReserve, thinkingCapReached, thinkingCapReserve } from './cap.js';
-import { fmtClock, resetEpoch } from './time.js';
+import { fmtClock, fmtHm, resetEpoch } from './time.js';
+import { join } from 'node:path';
 import {
   BUILD_TOOLS,
   CHECK_TOOLS,
@@ -80,6 +81,13 @@ export interface RoundContext {
   /** Dieser Slot -- 1 in der Ein-Slot-Welt (AK9). */
   slotId: string;
   clock: Clock;
+  /**
+   * Wurzel aller Ticket-Worktrees (#1226, AK7) -- derselbe Pfad wie
+   * $WORKTREE_BASE in claude-runner.sh. roundPlan() liest darin
+   * uncommittete Aenderungen eines abgebrochenen Bau-Laufs aus, um sie dem
+   * fortsetzenden Lauf im Prompt zu nennen.
+   */
+  worktreeBase: string;
 }
 
 export interface StatusUpdate {
@@ -155,6 +163,16 @@ export type RoundPlanResult = RoundDone | RoundRun;
 
 const ERROR_EXCERPT_LIMIT = 1500;
 
+// #1226, AK4: ab dem zweiten Fehlschlag in Folge liegen zwischen zwei
+// Versuchen hoechstens so viele Minuten -- mindestens drei Starts je Stunde.
+// Der ERSTE Neuversuch hat KEINE Wartezeit (laeuft im naechsten Takt).
+const TRANSIENT_BACKOFF_MINUTES = 20;
+
+// #1226, AK5: die Grenze ist eine Zeitspanne seit dem ERSTEN Abbruch der
+// laufenden Fehlserie, keine Versuchszahl -- ein kurzer Ausfall darf nicht
+// schon nach ein paar Minuten (wenigen Versuchen) parken.
+const TRANSIENT_MAX_SPAN_SECONDS = 8 * 60 * 60;
+
 function labelsOf(issue: number, gh: GhAdapter): string {
   try {
     return `${gh.run(['issue', 'view', String(issue), '--json', 'labels', '-q', '.labels[].name']).split('\n').join(' ')} `;
@@ -220,6 +238,20 @@ export function branchName(issue: number, git: GitAdapter): string {
   return findIssueBranch(issue, git)?.name ?? '';
 }
 
+// #1226, AK7: der Worktree aus einem abgebrochenen Bau-Lauf liegt zu
+// roundPlan-Zeit schon auf Platte (Worktrees werden je Ticket wiederverwendet,
+// nicht pro Lauf neu angelegt) -- diese Liste nennt der neue Prompt, damit der
+// Agent dort ansetzt statt sie zu uebersehen. Fehlender/falscher Pfad -> leere
+// Liste (try/catch), nie ein Abbruch: das ist exakt das heutige Verhalten
+// (kein Carry-over-Abschnitt im Prompt).
+function uncommittedInBuildWorktree(issue: number, worktreeBase: string, git: GitAdapter): string {
+  try {
+    return git.run(['status', '--porcelain'], join(worktreeBase, `issue-${issue}`));
+  } catch {
+    return '';
+  }
+}
+
 function twoDigits(value: number): string {
   return String(value).padStart(2, '0');
 }
@@ -244,7 +276,7 @@ function yyyymmdd(clock: Clock): string {
 // ---------------------------------------------------------------------------
 
 export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanResult {
-  const { gh, git, state, sharedState, claims, slotId, clock } = ctx;
+  const { gh, git, state, sharedState, claims, slotId, clock, worktreeBase } = ctx;
   const { isLead } = opts;
 
   // #204, Frage 5 = A: nur der Leitslot faehrt die globalen Waechter -- sonst
@@ -448,6 +480,32 @@ export function roundPlan(ctx: RoundContext, opts: RoundPlanOptions): RoundPlanR
     // (`pr ready`, Squash-Merge, Nachziehen) -- sonst fahren alle Slots die
     // Wache parallel, sobald der Claim mal fehlt (Sweep/Absturz/Handlabeln).
     if (!claimTake(claims, issue, slotId)) return lostClaim();
+
+    // --- Warte-Gate fuer einen voruebergehenden API-Fehler (#1226, AK4/AK6) -
+    // Der Claim bleibt gehalten (nicht freigegeben): WIP=1 pro Slot
+    // (ADR-0014) und derselbe Worktree (AK7) verbieten, waehrenddessen ein
+    // zweites Ticket zu bauen -- der Slot idlet sichtbar bis zum naechsten
+    // erlaubten Versuch, statt das Ticket abzugeben.
+    const transientUntil = Number(state.read(`transient-until-${issue}`) ?? '0');
+    if (transientUntil > Math.floor(clock.now().getTime() / 1000)) {
+      const count = Number(state.read(`transient-${issue}`) ?? '0');
+      const firstEpoch = Number(state.read(`transient-first-${issue}`) ?? String(transientUntil));
+      const untilHm = fmtClock(transientUntil) ?? '?';
+      const deadlineHm = fmtClock(firstEpoch + TRANSIENT_MAX_SPAN_SECONDS) ?? '?';
+      return {
+        kind: 'done',
+        rc: 0,
+        status: status(
+          `vorübergehender API-Fehler bei #${issue}`,
+          '🔵',
+          `🔵 **Vorübergehender API-Fehler bei #${issue}**, neuer Versuch um ${untilHm} Uhr
+(Versuch ${count}, \`needs-answer\` erst ab ${deadlineHm} Uhr). **Kein Eingreifen
+nötig.** Der Arbeitsstand liegt in Git und im Fortschrittskommentar, nicht in
+der Session.`,
+        ),
+      };
+    }
+
     const prNum = prForIssue(issue, gh);
     if (prNum !== '') {
       // #880: ist der PR noch Entwurf, mergt die Wache ihn nicht selbst -- sie
@@ -973,6 +1031,12 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
     resume = sid;
   }
 
+  // #1226, AK7: nur fuer einen fortgesetzten Bau-Lauf relevant -- ein frischer
+  // Start hat keinen Vorlauf-Worktree, und die Denk-Rollen/der Pruef-Lauf
+  // bauen ohnehin in einem Wegwerf-Worktree.
+  const carriedOver =
+    role === 'build' && mode === 'resume' ? uncommittedInBuildWorktree(issue, worktreeBase, git) : '';
+
   const prompt =
     role === 'plan'
       ? planPrompt(issue)
@@ -982,7 +1046,7 @@ Morgen geht ein neuer Opus-Bau-Versuch automatisch weiter. Setze das Label \`opu
           ? checkPrompt(issue, criteria, checkBranch)
           : ciFix
             ? ciFixPrompt(issue, ciSummary)
-            : buildPrompt(issue);
+            : buildPrompt(issue, carriedOver);
 
   // Artifact fuer beide Denk-Rollen (#767, ADR-0024) -- zusammen mit `Write`,
   // weil `Artifact` nur einen `file_path` auf eine schon geschriebene Datei
@@ -1077,6 +1141,8 @@ export interface RoundEvalResult {
 // 'field' darf einen Punktpfad tragen ('usage.input_tokens') fuer verschachtelte
 // Objekte (#740) -- ein einzelnes Segment (bisherige Aufrufer: 'session_id',
 // 'result', 'api_error_status') verhaelt sich unveraendert wie zuvor.
+// #1226: 'is_error' ist ein JSON-Boolean, kein String/Number -- ohne den
+// dritten Zweig unten gaebe parseField dafuer immer '' zurueck.
 function parseField(out: string, field: string): string {
   try {
     const parsed = JSON.parse(out) as unknown;
@@ -1086,7 +1152,11 @@ function parseField(out: string, field: string): string {
       }
       return undefined;
     }, parsed);
-    return typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '';
+    return typeof value === 'string'
+      ? value
+      : typeof value === 'number' || typeof value === 'boolean'
+        ? String(value)
+        : '';
   } catch {
     return '';
   }
@@ -1123,6 +1193,23 @@ function logUsage(plan: RoundRun, outcome: RoundOutcome, slotId: string): void {
 // Diagnose zaehlt als CLI-Text.
 function cliText(diag: string, resultTxt: string): string {
   return resultTxt === '' ? diag : diag.split(resultTxt).join(' ');
+}
+
+// #1226, AK1/AK2: erkennt einen voruebergehenden API-Fehler. 'cliApiError'
+// faengt den #1201-Fall -- die CLI meldet 'is_error:true' und schreibt ihre
+// EIGENE Fehlermeldung als Praefix von 'result' ('API Error: ...'), unabhaengig
+// von 'subtype' (kann 'success' sein) und 'api_error_status' (kann fehlen).
+// Das ist kein Agententext und braucht darum KEIN cliText() -- 'result' wird
+// hier als CLI-eigene Meldung gelesen, nicht als Antwort des Agenten. Die
+// Statuscode- und Textmuster-Zweige bleiben unveraendert und sehen weiterhin
+// nur den CLI-Anteil (F17, #491): ein Agententext, der "API Error" o. Ae. nur
+// *enthaelt* (nicht als Praefix von 'result' bei is_error:true), faellt bei
+// allen drei Zweigen durch -- genau die AK2-Trennschaerfe.
+function isTransientApiError(apiStatus: string, resultTxt: string, isError: string, log: string): boolean {
+  const cliApiError = isError === 'true' && /^\s*API Error:/i.test(resultTxt);
+  const statusCode = ['500', '502', '503', '504', '529'].includes(apiStatus);
+  const textPattern = /api error|server error|overloaded|connection error|timed? ?out/i.test(cliText(log, resultTxt));
+  return cliApiError || statusCode || textPattern;
 }
 
 function errorExcerpt(out: string, log: string): string {
@@ -1285,10 +1372,27 @@ Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an, sol
   }
 
   const transientFile = `transient-${issue}`;
+  const transientFirstFile = `transient-first-${issue}`;
+  const transientUntilFile = `transient-until-${issue}`;
+  const clearTransient = (): void => {
+    state.remove(transientFile);
+    state.remove(transientFirstFile);
+    state.remove(transientUntilFile);
+  };
+
+  // #1226: vorab bestimmt, weil sowohl der Erfolgszweig (Absicherung AK1,
+  // "auch wenn subtype success") als auch der 429-/Notbremse-/Fehlschlag-Zweig
+  // unten wissen muessen, ob dieser Lauf an einem voruebergehenden API-Fehler
+  // gescheitert ist -- vorher stand diese Pruefung erst NACH dem Erfolgszweig,
+  // ein is_error:true mit rc 0 waere also nie hier angekommen.
+  const apiStatus = parseField(outcome.out, 'api_error_status');
+  const resultTxt = parseField(outcome.out, 'result');
+  const isError = parseField(outcome.out, 'is_error');
+  const transient = isTransientApiError(apiStatus, resultTxt, isError, log);
 
   // --- Auswertung: sauberer Lauf -------------------------------------------
-  if (outcome.rc === 0) {
-    state.remove(transientFile);
+  if (outcome.rc === 0 && !transient) {
+    clearTransient();
 
     // Hat Claude bei GENAU DIESEM Ticket eine Frage gestellt, oder sich fuer
     // inhaltlich fertig erklaert (wartet auf CI/AK-Check)? Bewusst nicht
@@ -1402,11 +1506,12 @@ Kein Eingreifen nötig.`,
   // null/nicht-null pruefen und die Ausgabe lesen. Zuerst der Statuscode: 429
   // ist stabil, der Begleitsatz nicht. Genau daran ist die alte Erkennung
   // gescheitert -- sie kannte "usage limit", aber nicht "session limit".
-  const apiStatus = parseField(outcome.out, 'api_error_status');
-  const resultTxt = parseField(outcome.out, 'result');
-
+  // ('apiStatus'/'resultTxt' stehen schon oben, vor dem Erfolgszweig.)
+  //
   // Nur CLI-Anteil, nicht Agententext (F17, #491) -- 'result' scheidet aus.
   if (apiStatus === '429' || /usage limit|rate limit|session limit|limit reached|quota/i.test(cliText(log, resultTxt))) {
+    // #1226, AK5: "ein anderer Endgrund setzt die Spanne zurueck".
+    clearTransient();
     const epoch = resetEpoch(resultTxt, clock);
     let title: string;
     let text: string;
@@ -1451,6 +1556,8 @@ Fortschrittskommentar, nicht in der Session.`;
   }
 
   if (outcome.timedOut) {
+    // #1226, AK5: "ein anderer Endgrund setzt die Spanne zurueck".
+    clearTransient();
     appendEndReason(issue, `Notbremse ${outcome.maxRuntime}s`, gh, clock);
     return stop(
       {
@@ -1465,61 +1572,80 @@ Wird beim nächsten Lauf fortgesetzt. **Kein Eingreifen nötig.**`,
 
   // --- Voruebergehender API-Fehler? ----------------------------------------
   // Weder Limit noch inhaltlicher Fehlschlag -- ein Haenger mitten in der
-  // Antwort. Der richtige Umgang ist ein neuer Versuch beim naechsten Takt,
-  // kein needs-answer. Zaehlt bewusst NICHT als Eskalations-Fehlversuch
-  // (ADR-0007): Infrastruktur, kein Inhalt.
-  // Nur CLI-Anteil, nicht Agententext (F17, #491) -- 'resultTxt' scheidet aus.
-  const transient =
-    ['500', '502', '503', '504', '529'].includes(apiStatus) ||
-    /api error|server error|overloaded|connection error|timed? ?out/i.test(cliText(log, resultTxt));
-
+  // Antwort (isTransientApiError oben, AK1/AK2). Der richtige Umgang ist ein
+  // neuer Versuch, kein needs-answer. Zaehlt bewusst NICHT als
+  // Eskalations-Fehlversuch (ADR-0007): Infrastruktur, kein Inhalt (AK3).
   if (transient) {
-    const count = Number(state.read(transientFile) ?? '0') + 1;
-    if (count < 3) {
-      state.write(transientFile, String(count));
-      return stop(
-        {
-          title: `vorübergehender API-Fehler bei #${issue}`,
-          emoji: '🔵',
-          text: `🔵 **Vorübergehender API-Fehler bei #${issue}** (Versuch ${count} von 3). Neuer
-Versuch beim nächsten Takt. **Kein Eingreifen nötig.** Der Arbeitsstand liegt in
-Git und im Fortschrittskommentar, nicht in der Session.`,
-        },
-        0,
-      );
-    }
+    const nowEpoch = Math.floor(clock.now().getTime() / 1000);
+    const prevCount = Number(state.read(transientFile) ?? '0');
+    const count = prevCount + 1;
+    // AK5: die Zeitspanne zaehlt seit dem ERSTEN Abbruch der laufenden Serie
+    // -- 'transientFirstFile' wird nur beim allerersten Fehlschlag neu
+    // geschrieben, danach steht sie fest, bis ein anderer Endgrund sie
+    // zuruecksetzt (clearTransient() oben/unten).
+    if (prevCount === 0) state.write(transientFirstFile, String(nowEpoch));
+    const firstEpoch = Number(state.read(transientFirstFile) ?? String(nowEpoch));
+    const elapsed = nowEpoch - firstEpoch;
 
-    // Drittes Mal in Folge -- das ist kein Zufall mehr.
-    state.remove(transientFile);
-    tryGh(gh, [
-      'issue',
-      'comment',
-      String(issue),
-      '--body',
-      `🤖 Der Runner ist dreimal in Folge an einem
-vorübergehenden API-Fehler gescheitert (zuletzt Exit ${outcome.rc}).
+    if (elapsed >= TRANSIENT_MAX_SPAN_SECONDS) {
+      // AK5: acht Stunden durchgehend gescheitert -- das ist kein Zufall mehr.
+      const sinceHm = fmtHm(firstEpoch) ?? '?';
+      const hours = Math.round(elapsed / 3600);
+      clearTransient();
+      tryGh(gh, [
+        'issue',
+        'comment',
+        String(issue),
+        '--body',
+        `🤖 Der Runner ist seit ${sinceHm} durchgehend an einem vorübergehenden
+API-Fehler gescheitert: ${count} Versuche über rund ${hours} Stunden, zuletzt
+Exit ${outcome.rc}.
 Letzte Zeilen:
 \`\`\`
 ${errorExcerpt(outcome.out, log)}
 \`\`\``,
-    ]);
-    tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'needs-answer']);
-    return stop(
-      {
-        title: `Fehler bei #${issue}`,
-        emoji: '🔴',
-        text: `🔴 **Fehler bei #${issue}.** Dreimal in Folge ein vorübergehender API-Fehler —
-das ist kein Zufall mehr.
+      ]);
+      tryGh(gh, ['issue', 'edit', String(issue), '--add-label', 'needs-answer']);
+      return stop(
+        {
+          title: `Fehler bei #${issue}`,
+          emoji: '🔴',
+          text: `🔴 **Fehler bei #${issue}.** Seit ${sinceHm} durchgehend ein vorübergehender
+API-Fehler, acht Stunden lang kein erfolgreicher Versuch mehr — das ist kein
+Zufall mehr.
 
 Die Details stehen als Kommentar am Ticket. Ich fasse #${issue} nicht wieder an,
 solange das Label \`needs-answer\` hängt.`,
+        },
+        1,
+      );
+    }
+
+    state.write(transientFile, String(count));
+    // AK4: der erste Neuversuch hat KEINE Wartezeit (laeuft im naechsten
+    // Takt) -- ab dem zweiten Fehlschlag in Folge liegen hoechstens
+    // TRANSIENT_BACKOFF_MINUTES dazwischen, mindestens drei Versuche je Stunde.
+    const untilEpoch = count === 1 ? nowEpoch : nowEpoch + TRANSIENT_BACKOFF_MINUTES * 60;
+    state.write(transientUntilFile, String(untilEpoch));
+    const untilHm = fmtClock(untilEpoch) ?? '?';
+    const deadlineHm = fmtClock(firstEpoch + TRANSIENT_MAX_SPAN_SECONDS) ?? '?';
+    return stop(
+      {
+        title: `vorübergehender API-Fehler bei #${issue}`,
+        emoji: '🔵',
+        text: `🔵 **Vorübergehender API-Fehler bei #${issue}**, neuer Versuch um ${untilHm} Uhr
+(Versuch ${count}, \`needs-answer\` erst ab ${deadlineHm} Uhr). **Kein Eingreifen
+nötig.** Der Arbeitsstand liegt in Git und im Fortschrittskommentar, nicht in
+der Session.`,
       },
-      1,
+      0,
     );
   }
 
   // Ein "echter" inhaltlicher Fehlschlag -- das zaehlt als
   // Eskalations-Fehlversuch (ADR-0007).
+  // #1226, AK5: "ein anderer Endgrund setzt die Spanne zurueck".
+  clearTransient();
   buildEscalationEval(
     { issue, runRole: role, labels: plan.labels, beforeTip: plan.beforeTip, model: plan.model, runStart: plan.runStart },
     sharedState,
