@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { defaultCache } from '@serwist/next/worker';
-import type { PrecacheEntry, SerwistGlobalConfig } from 'serwist';
-import { Serwist } from 'serwist';
+import type { PrecacheEntry, RuntimeCaching, SerwistGlobalConfig } from 'serwist';
+import { NetworkOnly, Serwist } from 'serwist';
 import { buildNotification, parsePushPayload } from '@/push/notification';
 
 declare global {
@@ -102,12 +102,23 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
+// #1224 AK8: neither the admin document nor any `/api/admin/*` response may ever
+// land in Cache Storage — `defaultCache`'s `apis`/`pages` entries (NetworkFirst,
+// production only) would otherwise hold the account list for up to 24h after the
+// admin signs out. Routes are tried in order, so this must sit before
+// `defaultCache` or its broader `/api/*`/document matchers would claim the
+// request first.
+const adminNetworkOnly: RuntimeCaching = {
+  matcher: ({ url: { pathname } }) => pathname === '/admin' || pathname.startsWith('/admin/') || pathname.startsWith('/api/admin/'),
+  handler: new NetworkOnly(),
+};
+
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
-  runtimeCaching: defaultCache,
+  runtimeCaching: [adminNetworkOnly, ...defaultCache],
   fallbacks: {
     entries: [
       {

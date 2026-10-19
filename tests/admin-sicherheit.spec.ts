@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createOtherAccount, nonAdminContext, registerPasskey, resetAppData } from './helpers';
+import { createOtherAccount, currentAccountId, nonAdminContext, registerPasskey, resetAppData, seedInvite } from './helpers';
 
 /**
  * S7 of #1199 (#1224) — Sicherheits-Härtung des Admin-Bereichs. E2E nur für
@@ -17,10 +17,18 @@ test('AK5: /admin und /api/admin/accounts antworten einem Nutzer-Konto byte-glei
 }) => {
   const { page, close } = await nonAdminContext(browser, baseURL);
 
-  const adminPage = await page.goto('/admin');
-  const unknownPage = await page.goto('/dieser-pfad-existiert-nicht-1224');
-  expect(adminPage?.status()).toBe(unknownPage?.status());
-  expect(await adminPage?.text()).toBe(await unknownPage?.text());
+  // Read each navigation's body before the next `goto` replaces the frame —
+  // Playwright's `Response.text()` throws once the frame has moved on.
+  const adminResponse = await page.goto('/admin');
+  const adminStatus = adminResponse?.status();
+  const adminBody = await adminResponse?.text();
+
+  const unknownResponse = await page.goto('/dieser-pfad-existiert-nicht-1224');
+  const unknownStatus = unknownResponse?.status();
+  const unknownBody = await unknownResponse?.text();
+
+  expect(adminStatus).toBe(unknownStatus);
+  expect(adminBody).toBe(unknownBody);
 
   const adminApi = await page.request.get('/api/admin/accounts');
   const unknownApi = await page.request.get('/api/dieser-pfad-existiert-nicht-1224');
@@ -68,4 +76,20 @@ test('AK6: GET unter /api/admin/* löst keine Aktion aus (CSRF-sicher ohne Origi
   await createOtherAccount('Lesekonto');
   const response = await page.request.get('/api/admin/accounts');
   expect(response.ok()).toBe(true);
+});
+
+test('AK8: /admin und /api/admin/accounts tragen Cache-Control: no-store', async ({ page }) => {
+  const pageResponse = await page.goto('/admin');
+  expect(pageResponse?.headers()['cache-control']).toBe('no-store');
+
+  const apiResponse = await page.request.get('/api/admin/accounts');
+  expect(apiResponse.headers()['cache-control']).toBe('no-store');
+});
+
+test('AK9: /einladung/<token> trägt Referrer-Policy: no-referrer', async ({ page }) => {
+  const adminId = await currentAccountId();
+  const token = await seedInvite({ createdBy: adminId, label: 'Referrer-Test' });
+
+  const response = await page.request.get(`/einladung/${token}`);
+  expect(response.headers()['referrer-policy']).toBe('no-referrer');
 });

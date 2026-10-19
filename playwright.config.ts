@@ -117,7 +117,7 @@ export default defineConfig({
       // fall out of by default, so `mobile` (the only project without its own
       // testMatch) must exclude them explicitly.
       testIgnore: [
-        /(offline-critical|smoke\.prod|push-sw\.prod|shipped\.prod|navigation\.prod|csp\.prod|.*\.desktop|.*\.wide)\.spec\.ts$/,
+        /(offline-critical|smoke\.prod|push-sw\.prod|shipped\.prod|navigation\.prod|csp\.prod|admin-cache\.prod|.*\.desktop|.*\.wide)\.spec\.ts$/,
         /route-readiness\.test\.ts$/,
         /global-setup\.test\.ts$/,
       ],
@@ -153,7 +153,7 @@ export default defineConfig({
     },
     {
       name: 'offline-mobile',
-      testMatch: /(offline-critical|smoke\.prod|push-sw\.prod|navigation\.prod|csp\.prod)\.spec\.ts$/,
+      testMatch: /(offline-critical|smoke\.prod|push-sw\.prod|navigation\.prod|csp\.prod|admin-cache\.prod)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
@@ -164,7 +164,7 @@ export default defineConfig({
     },
     {
       name: 'offline-desktop',
-      testMatch: /(offline-critical|smoke\.prod|push-sw\.prod|navigation\.prod|csp\.prod)\.spec\.ts$/,
+      testMatch: /(offline-critical|smoke\.prod|push-sw\.prod|navigation\.prod|csp\.prod|admin-cache\.prod)\.spec\.ts$/,
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],

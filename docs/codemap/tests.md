@@ -8,11 +8,11 @@
 - `settings.spec.ts` / `modules.spec.ts` / `toast.spec.ts` / `sheet-tastatur.spec.ts` — Dark Mode, Kategoriefarben; Modul-Guard; Sync-Fehler-Toast; Sheet+Tastatur
 - `sync.spec.ts` / `mandant.spec.ts` / `export.spec.ts` / `persist-storage.spec.ts` — Outbox/Pull/Konflikte; Kontentrennung; Export+Tombstones; Storage-Persistenz
 - `offline-critical.spec.ts` / `navigation.prod.spec.ts` / `csp.prod.spec.ts` / `push-sw.prod.spec.ts` — Prod: SW-Offline, Tabs offline, CSP, Push
-- `shipped.prod.spec.ts` / `smoke.prod.spec.ts` / `playwright.shipped.config.ts` — Rauchtest gegen Bündel; Post-Deploy-Rauchtest
+- `shipped.prod.spec.ts` / `smoke.prod.spec.ts` / `playwright.shipped.config.ts` — Rauchtest Bündel; Post-Deploy
 - `auth-{geraete,sperren,recovery-register}.spec.ts` / `auth-{verify,rate-limit}.spec.ts` — Passkeys/Sitzungen, Sperren, Recovery; Verify-Fehler, Rate-Limit
 - `einladung.spec.ts` — Einladungs-Token: Hash, Einlösen, Einmaligkeit, Bootstrap
-- `ics.spec.ts` / `quota.spec.ts` — ICS-Rate-Limit je Konto; Speicherquote, 413
-- `admin-{uebersicht,aktionen,sicherheit}.spec.ts` — Zugang, Kennzahlen; Aktionen+Audit; 404/CSRF-Härtung
+- `ics.spec.ts` / `quota.spec.ts` — ICS-Rate-Limit je Konto; Speicherquote 413
+- `admin-{uebersicht,aktionen,sicherheit}.spec.ts` / `admin-cache.prod.spec.ts` — Zugang, Aktionen, 404/CSRF; SW-Cache-Ausschluss
 - `push.spec.ts` / `push-reminders.spec.ts` / `reminder-prefs.spec.ts` / `schema.spec.ts` — Push-Abo; Reminder-Versand; Reminder-Panel; Schema-Exaktheit
 - `tasks.spec.ts` / `uebersicht.spec.ts` / `uebersicht-{ladezustand,begruessung}.spec.ts` — Aufgaben-Schreibwege, Filter; Übersicht: Woche, nächster Termin, Laden
 - `capture.spec.ts` / `capture-{uebersicht,router,routine-neu}.spec.ts` / `capture-{art,wiederholung,zeigerzeit}.spec.ts` — Freitext → Aufgabe/Termin/Routine
