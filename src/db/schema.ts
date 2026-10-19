@@ -381,6 +381,49 @@ export const sessions = pgTable(
 );
 
 /**
+ * An admin-issued invitation link — the only door into the installation since
+ * S3 (#1202, ADR-0031): there is no open registration form any more.
+ *
+ * Server infrastructure like `sessions`/`recoveryCodes` — no `syncColumns`, no
+ * `SYNC_REGISTRY` entry, no Dexie counterpart; `check-tenant-isolation.sh`
+ * only scans tables that spread `syncColumns`, so this one is structurally
+ * outside its reach.
+ *
+ * `tokenHash` stays globally unique for the same reason `credentials.credentialId`
+ * does: the plaintext token is presented without an account and has to resolve to
+ * one. The plaintext itself is returned exactly once, by `createInvite` — never
+ * stored, never logged.
+ *
+ * `userId` is nullable for two different reasons depending on which side set it:
+ * - at creation, null means "a fresh account will be minted when someone redeems
+ *   this" (the ordinary user invite);
+ * - `scripts/bootstrap-admin.ts` instead pre-binds it to the admin account it just
+ *   created, so redeeming that invite attaches a passkey to an *existing* account
+ *   instead of minting a second one.
+ * Either way, after redemption it names the account the invite produced or joined
+ * (AK1) — `burnInvite` is what fills it in the first case.
+ */
+export const invites = pgTable(
+  'invites',
+  {
+    id: uuid('id').primaryKey(),
+    tokenHash: text('token_hash').notNull().unique(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    label: text('label'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('invites_expires_at_idx').on(table.expiresAt)],
+);
+
+export type Invite = typeof invites.$inferSelect;
+export type NewInvite = typeof invites.$inferInsert;
+
+/**
  * WebAuthn challenges. Kept server-side rather than in a cookie so a replay cannot
  * be mounted by handing the client its own challenge back.
  */
@@ -394,14 +437,21 @@ export const authChallenges = pgTable(
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     recoveryCodeId: uuid('recovery_code_id').references(() => recoveryCodes.id),
     /**
+     * Which invite is redeeming through this challenge (#1202, S3), mirroring
+     * `recoveryCodeId` below — server-side for the same reason: a client that
+     * could name the invite in the request body could redeem someone else's.
+     * Null for every ceremony that isn't invite-backed (session/recovery).
+     */
+    inviteId: uuid('invite_id').references(() => invites.id),
+    /**
      * Which account the registration about to happen belongs to (ADR-0031).
      * Server-side for the same reason the challenge itself is: a client that
      * could name the account would be a client that could enrol a passkey into
      * a stranger's.
      *
-     * Null means "no account yet" — the very first setup, where `verify` creates
-     * the admin account inside the same transaction as the credential. An
-     * abandoned ceremony therefore leaves no empty account behind.
+     * Null means "no account yet" — either a pending user-invite redemption (the
+     * account is minted inside `verify`'s transaction) or, before #1202, first
+     * setup. An abandoned ceremony therefore leaves no empty account behind.
      */
     userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
   },
@@ -475,7 +525,7 @@ export const authRateLimits = pgTable(
   'auth_rate_limits',
   {
     id: uuid('id').primaryKey(),
-    bucket: text('bucket').$type<'options' | 'recovery'>().notNull(),
+    bucket: text('bucket').$type<'options' | 'recovery' | 'invite'>().notNull(),
     key: text('key').notNull(),
     windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
     count: integer('count').notNull().default(0),
