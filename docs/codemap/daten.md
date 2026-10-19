@@ -21,6 +21,7 @@
 - `session.ts` / `auth-response.ts` / `device-cookie.ts` — Session-Token+requireUser(); 401/403-Antwort; Geräte-Etikett
 - `session-cookie.ts` — nur SESSION_COOKIE, von `middleware.ts` Edge-Runtime-ladbar
 - `webauthn.ts` / `rate-limit.ts` — Challenges/Credentials/Recovery; Fixed-Window-Limit, fail-open bei DB-Fehler
+- `invite.ts` — Einladungs-Tokens: erzeugen, prüfen, einmalig einlösen
 
 ## src/crypto
 
