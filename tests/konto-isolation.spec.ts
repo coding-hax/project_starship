@@ -104,27 +104,27 @@ async function stubAnmeldenForOfflineRedirect(page: Page): Promise<void> {
 }
 
 /**
- * Reads the local `records` store through a raw IndexedDB connection, not the
- * app's own Dexie handle — needed for AK6/AK7, where the assertion runs on
+ * Reads any local store's row count through a raw IndexedDB connection, not the
+ * app's own Dexie handle — needed for AK4/AK6/AK7, where the assertion runs on
  * `/anmelden`, outside the `(app)` layout that mounts `E2EBridge`. Opening a
  * second Dexie connection while the app's own is still live is the documented
  * flake (journal.spec.ts #338 AC3); this never races that, since the app's
  * connection died with the hard navigation that got us here.
  */
-async function localRecordCount(page: Page): Promise<number> {
+async function localStoreCount(page: Page, storeName: string): Promise<number> {
   return page.evaluate(
-    () =>
+    (name) =>
       new Promise<number>((resolve, reject) => {
         const request = indexedDB.open('starship');
         request.onerror = () => reject(request.error);
         request.onsuccess = () => {
           const db = request.result;
-          if (!db.objectStoreNames.contains('records')) {
+          if (!db.objectStoreNames.contains(name)) {
             db.close();
             resolve(0);
             return;
           }
-          const countRequest = db.transaction('records', 'readonly').objectStore('records').count();
+          const countRequest = db.transaction(name, 'readonly').objectStore(name).count();
           countRequest.onsuccess = () => {
             db.close();
             resolve(countRequest.result);
@@ -132,6 +132,36 @@ async function localRecordCount(page: Page): Promise<number> {
           countRequest.onerror = () => {
             db.close();
             reject(countRequest.error);
+          };
+        };
+      }),
+    storeName,
+  );
+}
+
+async function localRecordCount(page: Page): Promise<number> {
+  return localStoreCount(page, 'records');
+}
+
+/** Same raw-connection reasoning as `localStoreCount` — reads `meta.accountId`
+ * directly, for AK4/AK7 where `lockLocalDatabase()` (#1201, Option A) is
+ * supposed to restamp the marker rather than drop it like a full wipe would. */
+async function localAccountMarker(page: Page): Promise<string | undefined> {
+  return page.evaluate(
+    () =>
+      new Promise<string | undefined>((resolve, reject) => {
+        const request = indexedDB.open('starship');
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const db = request.result;
+          const getRequest = db.transaction('meta', 'readonly').objectStore('meta').get('accountId');
+          getRequest.onsuccess = () => {
+            db.close();
+            resolve(getRequest.result?.value as string | undefined);
+          };
+          getRequest.onerror = () => {
+            db.close();
+            reject(getRequest.error);
           };
         };
       }),
@@ -199,22 +229,43 @@ test('AK4: Abmelden und erneutes Anmelden desselben Kontos stellt den Zustand wi
   browser,
   baseURL,
 }) => {
-  const { context, page } = await freshSessionContext(browser, baseURL);
+  const { context, page, tokenHash } = await freshSessionContext(browser, baseURL);
+  const userId = await accountOf(tokenHash);
   await page.goto('/uebersicht');
   await settleJournalHabitBoot(page);
   await seedAndPushTask(page, 'AK4-Aufgabe');
+
+  // A failed best-effort sync right before locking must not cost this not-yet-pushed
+  // mutation (#1201 decision, Option A) — `lockLocalDatabase()` keeps the outbox and
+  // the account marker, unlike the full `wipeLocalDatabase()` a real account switch runs.
+  await page.route('**/api/sync/**', (route) => route.abort('failed'));
+  await page.evaluate(() =>
+    window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'AK4-Unsynced' } }),
+  );
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
 
   await page.goto('/einstellungen');
   await page.getByRole('button', { name: 'App sperren' }).click();
   await page.getByRole('button', { name: 'Sperren' }).click();
   await page.waitForURL('**/anmelden');
 
+  expect(await localRecordCount(page)).toBe(0);
+  expect(await localStoreCount(page, 'outbox')).toBe(1);
+  expect(await localAccountMarker(page)).toBe(userId);
+
   const relogin = await createThrowawaySession();
   await context.addCookies([{ name: 'starship_session', value: relogin.token, url: baseURL }]);
+  await page.unroute('**/api/sync/**');
   await page.goto('/uebersicht');
 
   await expect
     .poll(async () => (await dumpStores(page)).records.some((row) => row.data?.title === 'AK4-Aufgabe'))
+    .toBe(true);
+
+  await page.evaluate(() => window.__starship.sync());
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(0);
+  await expect
+    .poll(async () => (await dumpStores(page)).records.some((row) => row.data?.title === 'AK4-Unsynced'))
     .toBe(true);
 
   await context.close();
@@ -279,7 +330,8 @@ test('AK6: ein gelöschtes Konto räumt beim nächsten Sync lokal auf und landet
 });
 
 test('AK7: ein Abmelden ohne Netz spült die lokale Datenbank trotzdem', async ({ browser, baseURL }) => {
-  const { context, page } = await freshSessionContext(browser, baseURL);
+  const { context, page, tokenHash } = await freshSessionContext(browser, baseURL);
+  const userId = await accountOf(tokenHash);
   await page.goto('/uebersicht');
   await settleJournalHabitBoot(page);
   await seedAndPushTask(page, 'AK7-Aufgabe');
@@ -287,12 +339,21 @@ test('AK7: ein Abmelden ohne Netz spült die lokale Datenbank trotzdem', async (
   await stubAnmeldenForOfflineRedirect(page);
 
   await context.setOffline(true);
+  // Same reasoning as AK4's unsynced mutation above, offline instead of blocked:
+  // a device that can't reach the server at lock time must not lose this write either.
+  await page.evaluate(() =>
+    window.__starship.mutate({ table: 'tasks', op: 'upsert', payload: { title: 'AK7-Unsynced' } }),
+  );
+  await expect.poll(() => page.evaluate(() => window.__starship.size())).toBe(1);
+
   await expect(page.getByRole('button', { name: 'App sperren' })).toBeEnabled();
   await page.getByRole('button', { name: 'App sperren' }).click();
   await page.getByRole('button', { name: 'Sperren' }).click();
   await page.waitForURL('**/anmelden');
 
   expect(await localRecordCount(page)).toBe(0);
+  expect(await localStoreCount(page, 'outbox')).toBe(1);
+  expect(await localAccountMarker(page)).toBe(userId);
 
   await context.setOffline(false);
   await context.close();
