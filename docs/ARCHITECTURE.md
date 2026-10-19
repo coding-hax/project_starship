@@ -125,8 +125,8 @@ oder Google (ADR-0002). Konsequenzen für die Architektur:
   `RECURRENCE-ID` kommt im Code nicht vor.
 - `.ics`-Export der eigenen Termine ist (noch) nicht gebaut (siehe unten), kein Sync-Ersatz.
 
-Der GitHub-Actions-Cron läuft für terminierte Web-Push-Erinnerungen (`reminders.yml`);
-ein Backup-Cron ist (Stand heute) nicht angelegt, siehe unten.
+Der GitHub-Actions-Cron läuft für Web-Push-Erinnerungen (`reminders.yml`) und
+das nächtliche Backup (`backup.yml`, siehe unten).
 
 ## Security
 
@@ -148,8 +148,12 @@ ein Backup-Cron ist (Stand heute) nicht angelegt, siehe unten.
 
 - „Alles exportieren" (`src/features/export/`): vollständiger JSON-Dump aller
   IndexedDB-Datensätze inkl. Tombstones. Kein `.ics`-, kein Markdown-Export.
-- Nächtliches `pg_dump`-Backup per GitHub Action ist **Absicht, nicht umgesetzt** —
-  `.github/workflows/` hat heute keinen Backup-Workflow, keine dafür nötigen Secrets.
+- Nächtliches `pg_dump`-Backup (`backup.yml`), Secrets-gated wie
+  `reminders.yml` — dumpt die ganze DB, deckt jedes Konto ab. Ziel ist ein
+  generisches HTTP-PUT, Anbieter entscheidet der Mensch (kein Vendor-Lock-in).
+- **Löschkonzept:** ein Konto fällt per `ON DELETE CASCADE` sofort aus der
+  Live-DB, aus Backups erst nach **30 Tagen** Rollierung. Dumps mit fremden
+  Daten/Chiffraten nie ins öffentliche Repo.
 
 ## Umgebungen
 
