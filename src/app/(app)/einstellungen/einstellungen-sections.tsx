@@ -7,6 +7,8 @@ import { ModulePanel } from '@/features/settings/module-panel';
 import { NavOrderPanel } from '@/features/settings/nav-order-panel';
 import { PushPanel } from '@/features/settings/push-panel';
 import { SessionPanel } from '@/features/settings/session-panel';
+import { useIsAdmin } from '@/features/settings/use-admin-role';
+import { VerwaltungPanel } from '@/features/settings/verwaltung-panel';
 import { useActiveSections } from '@/modules/module-sections';
 import type { ComponentType } from 'react';
 
@@ -14,7 +16,7 @@ import type { ComponentType } from 'react';
  *  (issue #308, #339, #560, #1184). */
 const ORDER = ['aufgaben', 'routinen', 'kalender', 'wetter', 'journal', 'export'];
 
-type GroupId = 'geraet' | 'module' | 'daten';
+type GroupId = 'geraet' | 'module' | 'daten' | 'verwaltung';
 
 /**
  * Welcher Gruppe ein modulbasiertes Panel zugeordnet wird (issue #653). ICS-Abos
@@ -59,12 +61,24 @@ const GROUPS: Array<{ id: GroupId; title: string; core: CorePanel[] }> = [
   { id: 'daten', title: 'Daten', core: [] },
 ];
 
+/**
+ * Not a `GROUPS` entry: a static `core: [{ id: 'verwaltung', ... }]` would make
+ * the group always non-empty (AK10) — a `user` account would still find an
+ * empty-but-present "Verwaltung" `<h2>` in the DOM, which is exactly the leak
+ * AK10 (mirroring AK1) forbids. Appending it only once `useIsAdmin()` resolves
+ * `true` keeps a non-admin account's render identical to before this group
+ * existed.
+ */
+const VERWALTUNG_GROUP = { id: 'verwaltung' as const, title: 'Verwaltung', core: [{ id: 'verwaltung', Component: VerwaltungPanel }] };
+
 export function EinstellungenSections() {
   const sections = useActiveSections(ORDER, (m) => m.SettingsPanel);
+  const isAdmin = useIsAdmin();
+  const groups = isAdmin ? [...GROUPS, VERWALTUNG_GROUP] : GROUPS;
 
   return (
     <div className="einstellungen__groups">
-      {GROUPS.map((group) => {
+      {groups.map((group) => {
         const items = [...group.core, ...sections.filter(({ id }) => MODULE_GROUP[id] === group.id)];
         if (items.length === 0) return null;
         return (
