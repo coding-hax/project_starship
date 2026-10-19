@@ -5,10 +5,15 @@ vi.mock('next/headers', () => ({ cookies: () => Promise.resolve(cookieStore) }))
 
 const limit = vi.fn();
 const updateWhere = vi.fn().mockResolvedValue(undefined);
+const onConflictDoNothing = vi.fn().mockResolvedValue(undefined);
 vi.mock('@/db', () => ({
   db: {
     select: () => ({ from: () => ({ innerJoin: () => ({ where: () => ({ limit }) }), where: () => ({ limit }) }) }),
     update: () => ({ set: () => ({ where: updateWhere }) }),
+    // `requireUser()` also calls `recordActivity()` (S4, #1203 AK3) — its own
+    // behaviour has a dedicated suite in activity.test.ts, this just has to not
+    // blow up the (unrelated) assertions below.
+    insert: () => ({ values: () => ({ onConflictDoNothing }) }),
   },
 }));
 
@@ -25,6 +30,7 @@ describe('requireUser', () => {
     role: 'user',
     credentialId: 'cred-uuid',
     blockedAt: null,
+    userLastSeenAt: null,
     ...over,
   });
 

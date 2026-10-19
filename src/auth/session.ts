@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { uuidv7 } from 'uuidv7';
 import { db } from '@/db';
 import { sessions, users } from '@/db/schema';
+import { recordActivity } from './activity';
 import { ensureDeviceId, healDeviceCookie } from './device-cookie';
 import { SESSION_COOKIE } from './session-cookie';
 
@@ -85,6 +86,10 @@ export interface SessionUser {
   credentialId: string | null;
   deviceId: string | null;
   lastSeenAt: Date | null;
+  /** The *account's* `users.last_seen_at` (S4, #1203 AK3) — distinct from `lastSeenAt`
+   * above, which is this *session's* own throttled stamp. `recordActivity()` needs
+   * this one to decide whether its own hourly throttle is still open. */
+  userLastSeenAt: Date | null;
   /** Set while the account is locked — `requireUser()` turns this into a 403. */
   blockedAt: Date | null;
 }
@@ -111,6 +116,7 @@ export async function getSession(): Promise<SessionUser | null> {
       userId: users.id,
       role: users.role,
       blockedAt: users.blockedAt,
+      userLastSeenAt: users.lastSeenAt,
       sessionId: sessions.id,
       credentialId: sessions.credentialId,
       deviceId: sessions.deviceId,
@@ -269,7 +275,20 @@ export async function requireUser(): Promise<SessionUser> {
   // Do not call this from a Server Component; getSession() is the read-only half.
   await healDeviceCookie(session.deviceId);
   await touchLastSeen(session.sessionId, session.lastSeenAt);
+  await recordActivity(session.userId, session.userLastSeenAt);
 
+  return session;
+}
+
+/**
+ * `requireUser()` plus the one extra check /admin needs (S4, #1203 AK1): the
+ * account exists and is signed in (otherwise `requireUser()` already threw), but
+ * is not `role: 'admin'`. `authErrorResponse()` maps this to 404, not 403 — the
+ * existence of /admin is not information a non-admin account gets to have.
+ */
+export async function requireAdmin(): Promise<SessionUser> {
+  const session = await requireUser();
+  if (session.role !== 'admin') throw new NotAdminError();
   return session;
 }
 
@@ -299,5 +318,14 @@ export class AccountBlockedError extends Error {
   constructor() {
     super('Account blocked');
     this.name = 'AccountBlockedError';
+  }
+}
+
+/** A live, unblocked session on a `role: 'user'` account reaching an admin-only
+ * route — 404, never 403 (AK1): see `requireAdmin()` above. */
+export class NotAdminError extends Error {
+  constructor() {
+    super('Not admin');
+    this.name = 'NotAdminError';
   }
 }
