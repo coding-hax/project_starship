@@ -70,30 +70,32 @@ describe('burnRecoveryCode (single-use via conditional update, not read-then-wri
 
 describe('consumeChallenge — single atomic DELETE … RETURNING', () => {
   it('resolves ok:true with the bound recoveryCodeId, without a prior SELECT', async () => {
-    del.mockResolvedValue([{ recoveryCodeId: 'rc-1', userId: 'user-1' }]);
+    del.mockResolvedValue([{ recoveryCodeId: 'rc-1', inviteId: null, userId: 'user-1' }]);
 
     const { consumeChallenge } = await import('./webauthn');
     await expect(consumeChallenge('chal-1', 'registration')).resolves.toEqual({
       ok: true,
       recoveryCodeId: 'rc-1',
+      inviteId: null,
       userId: 'user-1',
     });
     expect(select).not.toHaveBeenCalled();
   });
 
   it('resolves ok:true with recoveryCodeId:null for an authentication challenge', async () => {
-    del.mockResolvedValue([{ recoveryCodeId: null, userId: 'user-1' }]);
+    del.mockResolvedValue([{ recoveryCodeId: null, inviteId: null, userId: 'user-1' }]);
 
     const { consumeChallenge } = await import('./webauthn');
     await expect(consumeChallenge('chal-2', 'authentication')).resolves.toEqual({
       ok: true,
       recoveryCodeId: null,
+      inviteId: null,
       userId: 'user-1',
     });
   });
 
   it('carries the bound account through, so verify never reads it from the request (#1200)', async () => {
-    del.mockResolvedValue([{ recoveryCodeId: null, userId: 'user-7' }]);
+    del.mockResolvedValue([{ recoveryCodeId: null, inviteId: null, userId: 'user-7' }]);
 
     const { consumeChallenge } = await import('./webauthn');
     await expect(consumeChallenge('chal-5', 'registration')).resolves.toMatchObject({
@@ -101,13 +103,26 @@ describe('consumeChallenge — single atomic DELETE … RETURNING', () => {
     });
   });
 
-  it('resolves userId:null for a first setup — there is no account yet (#1200)', async () => {
-    del.mockResolvedValue([{ recoveryCodeId: null, userId: null }]);
+  it('resolves ok:true with the bound inviteId — invite-backed registration (#1202)', async () => {
+    del.mockResolvedValue([{ recoveryCodeId: null, inviteId: 'inv-1', userId: null }]);
+
+    const { consumeChallenge } = await import('./webauthn');
+    await expect(consumeChallenge('chal-7', 'registration')).resolves.toEqual({
+      ok: true,
+      recoveryCodeId: null,
+      inviteId: 'inv-1',
+      userId: null,
+    });
+  });
+
+  it('resolves userId:null for a pending invite redemption — there is no account yet (#1202)', async () => {
+    del.mockResolvedValue([{ recoveryCodeId: null, inviteId: null, userId: null }]);
 
     const { consumeChallenge } = await import('./webauthn');
     await expect(consumeChallenge('chal-6', 'registration')).resolves.toEqual({
       ok: true,
       recoveryCodeId: null,
+      inviteId: null,
       userId: null,
     });
   });
@@ -119,24 +134,27 @@ describe('consumeChallenge — single atomic DELETE … RETURNING', () => {
     await expect(consumeChallenge('chal-3', 'registration')).resolves.toEqual({
       ok: false,
       recoveryCodeId: null,
+      inviteId: null,
       userId: null,
     });
   });
 
   it('lets only the first of two concurrent consumers of the same challenge win', async () => {
     del
-      .mockResolvedValueOnce([{ recoveryCodeId: 'rc-1', userId: 'user-1' }])
+      .mockResolvedValueOnce([{ recoveryCodeId: 'rc-1', inviteId: null, userId: 'user-1' }])
       .mockResolvedValueOnce([]);
 
     const { consumeChallenge } = await import('./webauthn');
     await expect(consumeChallenge('chal-4', 'registration')).resolves.toEqual({
       ok: true,
       recoveryCodeId: 'rc-1',
+      inviteId: null,
       userId: 'user-1',
     });
     await expect(consumeChallenge('chal-4', 'registration')).resolves.toEqual({
       ok: false,
       recoveryCodeId: null,
+      inviteId: null,
       userId: null,
     });
   });

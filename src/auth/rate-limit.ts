@@ -9,10 +9,14 @@ import { authRateLimits } from '@/db/schema';
  * `login/options`, `register/options` and `register/verify` — a legit ceremony is
  * 1-2 calls, far under the limit. `recovery` is its own, stricter budget counted
  * only on a *failed* recovery-code attempt (AC3), never on a successful one.
+ * `invite` (#1202, S3, AK7) is the same shape as `recovery` — its own budget
+ * counted only on a failed invite-token attempt — so guessing at tokens cannot
+ * borrow against the shared `options` budget either.
  */
 export const AUTH_RATE_LIMITS = {
   options: { limit: 20, windowMs: 5 * 60 * 1000 },
   recovery: { limit: 5, windowMs: 60 * 60 * 1000 },
+  invite: { limit: 5, windowMs: 60 * 60 * 1000 },
 } as const satisfies Record<string, { limit: number; windowMs: number }>;
 
 type Bucket = keyof typeof AUTH_RATE_LIMITS;
@@ -94,12 +98,12 @@ export async function enforce(request: Request, bucket: Bucket): Promise<NextRes
 }
 
 /**
- * Read-only check of the recovery budget — call before spending the attempt on
- * `verifyRecoveryCode`. Does not itself count anything; only `noteRecoveryFailure`
- * does, so a successful recovery never touches the budget (AC3).
+ * Read-only check of a failure-counted budget — call before spending the attempt
+ * on `verifyRecoveryCode`/`verifyInvite`. Does not itself count anything; only
+ * `noteFailure` does, so a success never touches the budget (AC3/AK7).
  */
-export async function recoveryBlocked(request: Request): Promise<NextResponse | null> {
-  const cfg = AUTH_RATE_LIMITS.recovery;
+async function blocked(bucket: Bucket, request: Request): Promise<NextResponse | null> {
+  const cfg = AUTH_RATE_LIMITS[bucket];
   try {
     const key = clientKey(request);
     const now = Date.now();
@@ -110,7 +114,7 @@ export async function recoveryBlocked(request: Request): Promise<NextResponse | 
       .from(authRateLimits)
       .where(
         and(
-          eq(authRateLimits.bucket, 'recovery'),
+          eq(authRateLimits.bucket, bucket),
           eq(authRateLimits.key, key),
           eq(authRateLimits.windowStart, windowStart),
         ),
@@ -127,18 +131,18 @@ export async function recoveryBlocked(request: Request): Promise<NextResponse | 
   }
 }
 
-/** Counts one failed recovery-code attempt against the recovery budget. */
-export async function noteRecoveryFailure(request: Request): Promise<void> {
-  const cfg = AUTH_RATE_LIMITS.recovery;
+/** Counts one failed attempt against `bucket`'s budget. */
+async function noteFailure(bucket: Bucket, request: Request): Promise<void> {
+  const cfg = AUTH_RATE_LIMITS[bucket];
   try {
     const key = clientKey(request);
     const windowStart = currentWindowStart(cfg, Date.now());
 
-    await pruneStale('recovery', windowStart);
+    await pruneStale(bucket, windowStart);
 
     await db
       .insert(authRateLimits)
-      .values({ id: uuidv7(), bucket: 'recovery', key, windowStart, count: 1 })
+      .values({ id: uuidv7(), bucket, key, windowStart, count: 1 })
       .onConflictDoUpdate({
         target: [authRateLimits.bucket, authRateLimits.key, authRateLimits.windowStart],
         set: { count: sql`${authRateLimits.count} + 1` },
@@ -146,4 +150,21 @@ export async function noteRecoveryFailure(request: Request): Promise<void> {
   } catch {
     console.error('auth-rate-limit: db access failed, count not recorded');
   }
+}
+
+export function recoveryBlocked(request: Request): Promise<NextResponse | null> {
+  return blocked('recovery', request);
+}
+
+export function noteRecoveryFailure(request: Request): Promise<void> {
+  return noteFailure('recovery', request);
+}
+
+/** AK7: invites have their own budget, separate from `options` and `recovery`. */
+export function inviteBlocked(request: Request): Promise<NextResponse | null> {
+  return blocked('invite', request);
+}
+
+export function noteInviteFailure(request: Request): Promise<void> {
+  return noteFailure('invite', request);
 }

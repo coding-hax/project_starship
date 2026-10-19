@@ -1,15 +1,10 @@
 import { verifyRegistrationResponse } from '@simplewebauthn/server';
 import { NextResponse } from 'next/server';
 import { uuidv7 } from 'uuidv7';
+import { burnInvite } from '@/auth/invite';
 import { enforce } from '@/auth/rate-limit';
 import { createSession } from '@/auth/session';
-import {
-  burnRecoveryCode,
-  consumeChallenge,
-  hasAnyCredential,
-  issueRecoveryCode,
-  relyingParty,
-} from '@/auth/webauthn';
+import { burnRecoveryCode, consumeChallenge, hasAnyCredential, issueRecoveryCode, relyingParty } from '@/auth/webauthn';
 import { db } from '@/db';
 import { credentials, users } from '@/db/schema';
 
@@ -25,22 +20,26 @@ export async function POST(request: Request) {
   }
 
   // Both bindings come from the challenge row, never from the request body
-  // (ADR-0031): `userId` says whose account this passkey joins, and a client
-  // that could name it could enrol into a stranger's account.
-  const { ok, recoveryCodeId, userId } = await consumeChallenge(body.challenge, 'registration');
+  // (ADR-0031): `userId`/`inviteId` say whose account (or which invite) this
+  // passkey joins, and a client that could name either could enrol into a
+  // stranger's account.
+  const { ok, recoveryCodeId, inviteId, userId } = await consumeChallenge(
+    body.challenge,
+    'registration',
+  );
   if (!ok) {
     return NextResponse.json({ error: 'Challenge abgelaufen.' }, { status: 400 });
   }
 
   const rp = relyingParty();
-  // A recovery-backed verify is never firstCredential, so it never mints a new
-  // recovery code — determined before the transaction, same as the credential count.
+  // A recovery- or invite-backed verify is never firstCredential on a non-empty
+  // installation, but the bootstrap admin's own invite is — determined before the
+  // transaction, same as before #1202.
   const firstCredential = !(await hasAnyCredential());
 
-  // Null `userId` only ever means first setup (register/options). Anything else
-  // would be a challenge row that named no account for an installation that
-  // already has one — refuse rather than guess which account to join.
-  if (!userId && !firstCredential) {
+  // Neither an account nor an invite named — the AK5 gate from register/options
+  // stripped the old "empty database" exception; refuse rather than guess.
+  if (!userId && !inviteId) {
     return NextResponse.json({ error: 'Registrierung nicht erlaubt.' }, { status: 403 });
   }
 
@@ -71,16 +70,31 @@ export async function POST(request: Request) {
 
   const { credential } = verification.registrationInfo;
   const newCredentialId = uuidv7();
-  // The first passkey on the installation also creates the account it belongs
-  // to — as `admin`, because the only way to become admin is to be first
-  // (ADR-0031). Created inside the transaction below, so an abandoned or failed
-  // ceremony leaves no empty account behind.
-  const targetUserId = userId ?? uuidv7();
+  // A pending invite (no account yet) mints one inside the transaction below, so
+  // an abandoned or failed ceremony leaves no empty account behind.
+  const provisionalUserId = userId ?? uuidv7();
+  // Set inside the transaction — a pre-bound invite (the bootstrap admin) points
+  // at an *existing* account, not `provisionalUserId`, so the actual target is
+  // only known once `burnInvite` returns.
+  let finalUserId = provisionalUserId;
 
   try {
     await db.transaction(async (tx) => {
+      if (inviteId) {
+        // AK3: the one conditional UPDATE … RETURNING that makes the token
+        // single-use under concurrency — two simultaneous ceremonies with the
+        // same invite can each hold a valid challenge, but only one `UPDATE`
+        // here affects a row.
+        const burned = await burnInvite(inviteId, provisionalUserId, tx);
+        if (!burned) throw new InviteAlreadyUsedError();
+        finalUserId = burned.userId;
+      }
+
       if (!userId) {
-        await tx.insert(users).values({ id: targetUserId, role: 'admin' });
+        // A fresh user-invite redemption — no pre-bound account, so this ceremony
+        // mints one (role 'user': the only way to become 'admin' is through
+        // `scripts/bootstrap-admin.ts`, AK6).
+        await tx.insert(users).values({ id: finalUserId, role: 'user' });
       }
 
       if (recoveryCodeId && !(await burnRecoveryCode(recoveryCodeId, tx))) {
@@ -89,7 +103,7 @@ export async function POST(request: Request) {
 
       await tx.insert(credentials).values({
         id: newCredentialId,
-        userId: targetUserId,
+        userId: finalUserId,
         credentialId: credential.id,
         publicKey: Buffer.from(credential.publicKey).toString('base64url'),
         counter: credential.counter,
@@ -101,13 +115,20 @@ export async function POST(request: Request) {
     if (error instanceof RecoveryCodeAlreadyUsedError) {
       return NextResponse.json({ error: 'Recovery-Code bereits verbraucht.' }, { status: 403 });
     }
+    if (error instanceof InviteAlreadyUsedError) {
+      return NextResponse.json(
+        { error: 'Diese Einladung ist ungültig oder abgelaufen.' },
+        { status: 403 },
+      );
+    }
     throw error;
   }
 
-  await createSession(targetUserId, newCredentialId);
+  await createSession(finalUserId, newCredentialId);
 
-  // The recovery code exists once, at first setup, and is never recoverable again.
-  const recoveryCode = firstCredential ? await issueRecoveryCode(targetUserId) : null;
+  // The recovery code exists once, at first setup (the bootstrap admin's own
+  // invite), and is never recoverable again.
+  const recoveryCode = firstCredential ? await issueRecoveryCode(finalUserId) : null;
   return NextResponse.json({ verified: true, recoveryCode });
 }
 
@@ -115,5 +136,12 @@ class RecoveryCodeAlreadyUsedError extends Error {
   constructor() {
     super('Recovery code already used');
     this.name = 'RecoveryCodeAlreadyUsedError';
+  }
+}
+
+class InviteAlreadyUsedError extends Error {
+  constructor() {
+    super('Invite already used');
+    this.name = 'InviteAlreadyUsedError';
   }
 }

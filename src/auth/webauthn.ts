@@ -18,7 +18,7 @@ export function relyingParty() {
 export async function storeChallenge(
   challenge: string,
   kind: 'registration' | 'authentication',
-  binding: { recoveryCodeId?: string | null; userId?: string | null } = {},
+  binding: { recoveryCodeId?: string | null; inviteId?: string | null; userId?: string | null } = {},
 ): Promise<void> {
   await db.delete(authChallenges).where(lt(authChallenges.expiresAt, new Date()));
   await db.insert(authChallenges).values({
@@ -27,6 +27,7 @@ export async function storeChallenge(
     kind,
     expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS),
     recoveryCodeId: binding.recoveryCodeId ?? null,
+    inviteId: binding.inviteId ?? null,
     userId: binding.userId ?? null,
   });
 }
@@ -35,16 +36,17 @@ export async function storeChallenge(
  * Consumes the challenge: valid at most once, never after it expired. Single
  * `DELETE ... RETURNING` — matching challenge, `kind` and non-expiry are all part of
  * the `WHERE`, so there is no read-then-delete window two concurrent callers could
- * race through. Carries the recovery-code binding set by `storeChallenge` — that is
- * how `verify` learns a registration is recovery-backed without trusting a code sent
- * again by the client — and, since #1200, the account the registration targets:
- * a client that could name the account could enrol a passkey into a stranger's.
- * `userId: null` means "no account yet", i.e. the very first setup.
+ * race through. Carries the recovery-code/invite binding set by `storeChallenge` —
+ * that is how `verify` learns a registration is recovery- or invite-backed without
+ * trusting a code/token sent again by the client — and, since #1200, the account the
+ * registration targets: a client that could name the account could enrol a passkey
+ * into a stranger's. `userId: null` means "no account yet" — a pending invite
+ * redemption mints one inside `verify`'s transaction.
  */
 export async function consumeChallenge(
   challenge: string,
   kind: 'registration' | 'authentication',
-): Promise<{ ok: boolean; recoveryCodeId: string | null; userId: string | null }> {
+): Promise<{ ok: boolean; recoveryCodeId: string | null; inviteId: string | null; userId: string | null }> {
   const [row] = await db
     .delete(authChallenges)
     .where(
@@ -56,11 +58,12 @@ export async function consumeChallenge(
     )
     .returning({
       recoveryCodeId: authChallenges.recoveryCodeId,
+      inviteId: authChallenges.inviteId,
       userId: authChallenges.userId,
     });
 
-  if (!row) return { ok: false, recoveryCodeId: null, userId: null };
-  return { ok: true, recoveryCodeId: row.recoveryCodeId, userId: row.userId };
+  if (!row) return { ok: false, recoveryCodeId: null, inviteId: null, userId: null };
+  return { ok: true, recoveryCodeId: row.recoveryCodeId, inviteId: row.inviteId, userId: row.userId };
 }
 
 export async function listCredentials(userId: string) {
