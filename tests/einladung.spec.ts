@@ -271,6 +271,9 @@ test('AK8: eine angemeldete Sitzung legt ohne Invite einen zweiten Passkey am se
   const context = await browser.newContext({ storageState });
   const devicePage = await context.newPage();
   await enableVirtualAuthenticator(devicePage);
+  // navigator.credentials is undefined on about:blank (no secure-context origin yet) —
+  // the ceremony needs a loaded page before `createRegistrationCredential` can run.
+  await devicePage.goto('/uebersicht');
 
   const optionsRes = await devicePage.request.post('/api/auth/register/options');
   expect(optionsRes.status()).toBe(200);
