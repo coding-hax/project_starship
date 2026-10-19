@@ -1,17 +1,7 @@
 import { cache } from 'react';
 import { desc, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import {
-  adminAudit,
-  credentials,
-  invites,
-  pushSubscriptions,
-  recoveryCodes,
-  reminderSends,
-  sessions,
-  userActivityDays,
-  users,
-} from '@/db/schema';
+import { adminAudit, credentials, invites, sessions, userActivityDays, users } from '@/db/schema';
 
 export type AccountStatus = 'eingeladen' | 'aktiv' | 'gesperrt';
 
@@ -178,6 +168,53 @@ interface LastSyncRow {
 }
 
 /**
+ * Recovery/push health (AK1-AK3 of #1234) — three small grouped aggregates, one
+ * row per account, not four correlated subqueries evaluated once per account
+ * row the way `credentialCount`/`sessionCount`/`activeDays30` below still are.
+ * Same reasoning as `LAST_SYNC_QUERY` above: a plan that correlates once in
+ * total, not once per row, so the main `accountRows` select below stays at its
+ * original (S4, #1203) cost regardless of how many accounts exist.
+ */
+const HEALTH_QUERY = sql`
+  with recovery as (
+    select user_id,
+      count(*) filter (where used_at is null) as unused,
+      count(*) as total
+    from recovery_codes
+    group by user_id
+  ),
+  push as (
+    select user_id, count(*) as subscriptions
+    from push_subscriptions
+    group by user_id
+  ),
+  reminders as (
+    select user_id, count(*) as reminders30
+    from reminder_sends
+    where sent_at >= now() - interval '30 days'
+    group by user_id
+  )
+  select
+    coalesce(recovery.user_id, push.user_id, reminders.user_id) as user_id,
+    coalesce(recovery.unused, 0) as unused,
+    coalesce(recovery.total, 0) as total,
+    coalesce(push.subscriptions, 0) as subscriptions,
+    coalesce(reminders.reminders30, 0) as reminders30
+  from recovery
+  full outer join push on push.user_id = recovery.user_id
+  full outer join reminders on reminders.user_id = coalesce(recovery.user_id, push.user_id)
+`;
+
+interface HealthRow {
+  [key: string]: unknown;
+  user_id: string;
+  unused: string;
+  total: string;
+  subscriptions: string;
+  reminders30: string;
+}
+
+/**
  * The full `/api/admin/accounts` payload (AK2-AK7) — never a user content field
  * (AK8, see `src/app/api/admin/accounts/route.ts`'s own test). `cache()` (react)
  * memoises this for the lifetime of one request (AK4 "für die Dauer eines
@@ -185,7 +222,7 @@ interface LastSyncRow {
  * route handler's own copy never runs the aggregation twice.
  */
 export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => {
-  const [accountRows, usageRows, lastSyncRows, inviteRows, auditRows] = await Promise.all([
+  const [accountRows, usageRows, lastSyncRows, healthRows, inviteRows, auditRows] = await Promise.all([
     db
       .select({
         id: users.id,
@@ -200,20 +237,15 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
         // (`credentials.id`/`sessions.id` instead of the outer `users.id`), making every
         // count always 0 instead of actually correlating. `user_activity_days` has no
         // `id` column of its own, which is why that one subquery happened to still work.
-        // `recovery_codes`/`push_subscriptions`/`reminder_sends` each have their own
-        // `id` column too, same trap, same fix.
         credentialCount: sql<string>`(select count(*) from ${credentials} where ${credentials.userId} = "users"."id")`,
         sessionCount: sql<string>`(select count(*) from ${sessions} where ${sessions.userId} = "users"."id" and ${sessions.expiresAt} > now())`,
         activeDays30: sql<string>`(select count(*) from ${userActivityDays} where ${userActivityDays.userId} = "users"."id" and ${userActivityDays.day} >= current_date - 30)`,
-        recoveryUnused: sql<string>`(select count(*) from ${recoveryCodes} where ${recoveryCodes.userId} = "users"."id" and ${recoveryCodes.usedAt} is null)`,
-        recoveryTotal: sql<string>`(select count(*) from ${recoveryCodes} where ${recoveryCodes.userId} = "users"."id")`,
-        pushSubs: sql<string>`(select count(*) from ${pushSubscriptions} where ${pushSubscriptions.userId} = "users"."id")`,
-        reminders30: sql<string>`(select count(*) from ${reminderSends} where ${reminderSends.userId} = "users"."id" and ${reminderSends.sentAt} >= now() - interval '30 days')`,
       })
       .from(users)
       .orderBy(users.createdAt),
     db.execute<UsageRow>(USAGE_QUERY),
     db.execute<LastSyncRow>(LAST_SYNC_QUERY),
+    db.execute<HealthRow>(HEALTH_QUERY),
     db
       .select({ id: invites.id, label: invites.label, expiresAt: invites.expiresAt })
       .from(invites)
@@ -246,6 +278,16 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     lastSyncByAccount.set(row.user_id, row.last_sync_at ? new Date(row.last_sync_at).toISOString() : null);
   }
 
+  const healthByAccount = new Map<string, AccountOverviewRow['recovery'] & AccountOverviewRow['push']>();
+  for (const row of healthRows.rows) {
+    healthByAccount.set(row.user_id, {
+      unused: Number(row.unused),
+      total: Number(row.total),
+      subscriptions: Number(row.subscriptions),
+      reminders30: Number(row.reminders30),
+    });
+  }
+
   const now = Date.now();
   const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
@@ -257,6 +299,7 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
 
   const accounts: AccountOverviewRow[] = accountRows.map((row) => {
     const usage = usageByAccount.get(row.id) ?? { modules: emptyModules(), totalBytes: 0 };
+    const health = healthByAccount.get(row.id) ?? { unused: 0, total: 0, subscriptions: 0, reminders30: 0 };
     const credentialCount = Number(row.credentialCount);
     const status: AccountStatus = row.blockedAt ? 'gesperrt' : credentialCount === 0 ? 'eingeladen' : 'aktiv';
 
@@ -279,8 +322,8 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
       modules: usage.modules,
       devices: credentialCount,
       sessions: Number(row.sessionCount),
-      recovery: { unused: Number(row.recoveryUnused), total: Number(row.recoveryTotal) },
-      push: { subscriptions: Number(row.pushSubs), reminders30: Number(row.reminders30) },
+      recovery: { unused: health.unused, total: health.total },
+      push: { subscriptions: health.subscriptions, reminders30: health.reminders30 },
     };
   });
 
