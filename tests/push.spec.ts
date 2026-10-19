@@ -42,7 +42,10 @@ async function stubPushManager(page: Page) {
 
     Object.defineProperty(navigator, 'serviceWorker', {
       configurable: true,
-      value: { ready: Promise.resolve({ pushManager: fakePushManager }) },
+      value: {
+        ready: Promise.resolve({ pushManager: fakePushManager }),
+        getRegistration: async () => ({ pushManager: fakePushManager }),
+      },
     });
   });
 }
