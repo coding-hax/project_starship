@@ -55,6 +55,26 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+/** Wie `formatDate`, aber der Leerwert ist „nie" (AK1) statt „noch nie" — reines
+ * Lesen schreibt nie `synced_at`, ein Konto ohne Sync-Zeile hat also keinen
+ * Termin, der „noch" bevorsteht. */
+function formatSync(iso: string | null): string {
+  if (!iso) return 'nie';
+  return new Date(iso).toLocaleString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatRecovery(recovery: AccountOverviewRow['recovery']): string {
+  if (recovery.total === 0) return 'keine erzeugt';
+  if (recovery.unused === 0) return 'alle verbraucht';
+  return `${recovery.unused} von ${recovery.total}`;
+}
+
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('de-DE', {
     day: '2-digit',
@@ -100,6 +120,9 @@ function AccountCard({ account, isOwn, actions }: AccountCardProps) {
       <Row label="Zuletzt aktiv">
         <span>{formatDate(account.lastSeenAt)}</span>
       </Row>
+      <Row label="Letzter Sync">
+        <span>{formatSync(account.lastSyncAt)}</span>
+      </Row>
       <Row label="Aktive Tage (30)">
         <span>{account.activeDays30}</span>
       </Row>
@@ -111,6 +134,15 @@ function AccountCard({ account, isOwn, actions }: AccountCardProps) {
       </Row>
       <Row label="Sitzungen">
         <span>{account.sessions}</span>
+      </Row>
+      <Row label="Recovery-Codes">
+        <span>{formatRecovery(account.recovery)}</span>
+      </Row>
+      <Row label="Push-Abos">
+        <span>{account.push.subscriptions}</span>
+      </Row>
+      <Row label="Erinnerungen (30 Tage)">
+        <span>{account.push.reminders30} ausgelöst</span>
       </Row>
       <ul className="admin-overview__modules">
         {(Object.keys(MODULE_LABEL) as Array<keyof typeof MODULE_LABEL>).map((key) => (
