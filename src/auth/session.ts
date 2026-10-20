@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { uuidv7 } from 'uuidv7';
 import { db } from '@/db';
 import { sessions, users } from '@/db/schema';
-import { recordActivity } from './activity';
+import { recordActivity, recordActivityWindow } from './activity';
 import { ensureDeviceId, healDeviceCookie } from './device-cookie';
 import { SESSION_COOKIE } from './session-cookie';
 
@@ -92,6 +92,9 @@ export interface SessionUser {
   userLastSeenAt: Date | null;
   /** Set while the account is locked — `requireUser()` turns this into a 403. */
   blockedAt: Date | null;
+  /** Last build identifier this session reported (#1235 AK4) — `null` until the
+   * client sends an `X-App-Version` header, or if it never does. */
+  appVersion: string | null;
 }
 
 /**
@@ -121,6 +124,7 @@ export async function getSession(): Promise<SessionUser | null> {
       credentialId: sessions.credentialId,
       deviceId: sessions.deviceId,
       lastSeenAt: sessions.lastSeenAt,
+      appVersion: sessions.appVersion,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -268,6 +272,23 @@ async function touchLastSeen(sessionId: string, lastSeenAt: Date | null): Promis
 }
 
 /**
+ * Stamps `sessions.app_version` with the build identifier the client just
+ * reported via `X-App-Version` (#1235 AK4). `reported` empty/absent, or equal
+ * to `current` (the value already on file for this session), is a no-op —
+ * "schreibt nur, wenn sie sich ändert", not a write on every push/pull.
+ * Wrapped by its callers in a try/catch (AK6): a broken write here must never
+ * break the sync it rides along with.
+ */
+export async function recordSessionVersion(
+  sessionId: string,
+  current: string | null,
+  reported: string | null,
+): Promise<void> {
+  if (!reported || reported === current) return;
+  await db.update(sessions).set({ appVersion: reported }).where(eq(sessions.id, sessionId));
+}
+
+/**
  * The single authorisation gate (ADR-0031). Every route that touches `@/db`
  * calls it and scopes every query to the `userId` it returns;
  * `scripts/check-tenant-isolation.sh` keeps that honest.
@@ -295,6 +316,9 @@ export async function requireUser(): Promise<SessionUser> {
   await healDeviceCookie(session.deviceId);
   await touchLastSeen(session.sessionId, session.lastSeenAt);
   await recordActivity(session.userId, session.userLastSeenAt);
+  // 5-minute Neon wake-time window (#1233 AK1) — independent of the hourly
+  // throttle above, and never throws on its own (AK2), so no guard is needed here.
+  await recordActivityWindow(session.userId);
 
   return session;
 }

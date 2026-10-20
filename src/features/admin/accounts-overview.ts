@@ -29,6 +29,22 @@ export interface AccountOverviewRow {
   sessions: number;
   recovery: { unused: number; total: number };
   push: { subscriptions: number; reminders30: number };
+  /** Minutes of Neon wake-time this account caused in the last 30 days, and its
+   * share (0–100) of the total across all accounts + system sources (#1233 AK5). */
+  wakeMinutes30: number;
+  wakeShare: number;
+  /** 30-day sums from `account_sync_counters` (#1235 AK1-AK3) — only numbers,
+   * never a mutation id, table name, endpoint, or error text (AK8). */
+  sync: {
+    rejections: { malformed: number; missingRequired: number; constraint: number; quota: number };
+    conflicts: number;
+    fullPulls: number;
+    pushDropped: number;
+    pushFailed: number;
+  };
+  /** Active sessions whose last reported `app_version` differs from the
+   * server's own build (#1235 AK4). */
+  staleDevices: number;
 }
 
 export interface InviteOverviewRow {
@@ -55,6 +71,8 @@ export interface AccountsOverview {
     blocked: number;
     openInvites: number;
     totalBytes: number;
+    /** Neon wake-time of the last 30 days, split by who caused it (#1233 AK6). */
+    wake: { totalMinutes: number; cronMinutes: number; deployProbeMinutes: number };
   };
   accounts: AccountOverviewRow[];
   invites: InviteOverviewRow[];
@@ -65,6 +83,16 @@ export interface AccountsOverview {
 const AUDIT_DISPLAY_LIMIT = 200;
 
 type ModuleKey = 'aufgaben' | 'termine' | 'routinen' | 'journal';
+
+function emptySync(): AccountOverviewRow['sync'] {
+  return {
+    rejections: { malformed: 0, missingRequired: 0, constraint: 0, quota: 0 },
+    conflicts: 0,
+    fullPulls: 0,
+    pushDropped: 0,
+    pushFailed: 0,
+  };
+}
 
 function emptyModules(): AccountOverviewRow['modules'] {
   return {
@@ -215,6 +243,93 @@ interface HealthRow {
 }
 
 /**
+ * Neon wake-time of the last 30 days (#1233 AK4-AK6), split evenly across every
+ * source active in each 5-minute window: `win` counts, per `window_start`, how
+ * many distinct sources touched it (the partial unique indexes on
+ * `user_activity_windows` guarantee at most one row per source per window, so
+ * `count(*)` *is* that source count); the outer query then attributes
+ * `5.0 / sources` minutes to each row in that window and sums per source. The
+ * sum of every row's share this way is exactly `count(distinct window_start) *
+ * 5` — the total wake-time (AK4's "Summe aller Anteile ist genau die
+ * Gesamtwachzeit") — without a second query to compute that total separately.
+ */
+const WAKE_QUERY = sql`
+  with win as (
+    select window_start, count(*)::numeric as sources
+    from user_activity_windows
+    where window_start >= now() - interval '30 days'
+    group by window_start
+  )
+  select aw.user_id, aw.system_source, sum(5.0 / w.sources) as minutes
+  from user_activity_windows aw
+  join win w using (window_start)
+  where aw.window_start >= now() - interval '30 days'
+  group by aw.user_id, aw.system_source
+`;
+
+interface WakeRow {
+  [key: string]: unknown;
+  user_id: string | null;
+  system_source: 'cron' | 'deploy-probe' | null;
+  minutes: string;
+}
+
+/**
+ * 30-day sums of `account_sync_counters` (#1235 AK7) — one row per account,
+ * summed across days rather than correlated per account row, same reasoning as
+ * `LAST_SYNC_QUERY`/`HEALTH_QUERY`/`WAKE_QUERY` above.
+ */
+const COUNTERS_QUERY = sql`
+  select
+    user_id,
+    sum(rejected_malformed)::bigint as rejected_malformed,
+    sum(rejected_missing_required)::bigint as rejected_missing_required,
+    sum(rejected_constraint)::bigint as rejected_constraint,
+    sum(rejected_quota)::bigint as rejected_quota,
+    sum(conflicts)::bigint as conflicts,
+    sum(full_pulls)::bigint as full_pulls,
+    sum(push_subscriptions_dropped)::bigint as push_subscriptions_dropped,
+    sum(push_delivery_failures)::bigint as push_delivery_failures
+  from account_sync_counters
+  where day >= current_date - 30
+  group by user_id
+`;
+
+interface CountersRow {
+  [key: string]: unknown;
+  user_id: string;
+  rejected_malformed: string;
+  rejected_missing_required: string;
+  rejected_constraint: string;
+  rejected_quota: string;
+  conflicts: string;
+  full_pulls: string;
+  push_subscriptions_dropped: string;
+  push_delivery_failures: string;
+}
+
+/**
+ * Active sessions reporting a build other than the server's own (#1235 AK4,
+ * "andere Geräte"). `is distinct from` also counts a session as stale if the
+ * server itself has no known build (`VERCEL_GIT_COMMIT_SHA` unset, e.g. local
+ * dev) and the session reports one anyway — null-safe either direction.
+ */
+const STALE_DEVICES_QUERY = sql`
+  select user_id, count(*)::bigint as stale
+  from sessions
+  where expires_at > now()
+    and app_version is not null
+    and app_version is distinct from ${process.env.VERCEL_GIT_COMMIT_SHA ?? null}
+  group by user_id
+`;
+
+interface StaleDevicesRow {
+  [key: string]: unknown;
+  user_id: string;
+  stale: string;
+}
+
+/**
  * The full `/api/admin/accounts` payload (AK2-AK7) — never a user content field
  * (AK8, see `src/app/api/admin/accounts/route.ts`'s own test). `cache()` (react)
  * memoises this for the lifetime of one request (AK4 "für die Dauer eines
@@ -222,7 +337,17 @@ interface HealthRow {
  * route handler's own copy never runs the aggregation twice.
  */
 export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => {
-  const [accountRows, usageRows, lastSyncRows, healthRows, inviteRows, auditRows] = await Promise.all([
+  const [
+    accountRows,
+    usageRows,
+    lastSyncRows,
+    healthRows,
+    wakeRows,
+    countersRows,
+    staleDevicesRows,
+    inviteRows,
+    auditRows,
+  ] = await Promise.all([
     db
       .select({
         id: users.id,
@@ -246,6 +371,9 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     db.execute<UsageRow>(USAGE_QUERY),
     db.execute<LastSyncRow>(LAST_SYNC_QUERY),
     db.execute<HealthRow>(HEALTH_QUERY),
+    db.execute<WakeRow>(WAKE_QUERY),
+    db.execute<CountersRow>(COUNTERS_QUERY),
+    db.execute<StaleDevicesRow>(STALE_DEVICES_QUERY),
     db
       .select({ id: invites.id, label: invites.label, expiresAt: invites.expiresAt })
       .from(invites)
@@ -288,6 +416,43 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     });
   }
 
+  const wakeByAccount = new Map<string, number>();
+  let cronMinutes = 0;
+  let deployProbeMinutes = 0;
+  let totalWakeMinutes = 0;
+  for (const row of wakeRows.rows) {
+    const minutes = Number(row.minutes);
+    totalWakeMinutes += minutes;
+    if (row.user_id) {
+      wakeByAccount.set(row.user_id, (wakeByAccount.get(row.user_id) ?? 0) + minutes);
+    } else if (row.system_source === 'cron') {
+      cronMinutes += minutes;
+    } else if (row.system_source === 'deploy-probe') {
+      deployProbeMinutes += minutes;
+    }
+  }
+
+  const countersByAccount = new Map<string, AccountOverviewRow['sync']>();
+  for (const row of countersRows.rows) {
+    countersByAccount.set(row.user_id, {
+      rejections: {
+        malformed: Number(row.rejected_malformed),
+        missingRequired: Number(row.rejected_missing_required),
+        constraint: Number(row.rejected_constraint),
+        quota: Number(row.rejected_quota),
+      },
+      conflicts: Number(row.conflicts),
+      fullPulls: Number(row.full_pulls),
+      pushDropped: Number(row.push_subscriptions_dropped),
+      pushFailed: Number(row.push_delivery_failures),
+    });
+  }
+
+  const staleDevicesByAccount = new Map<string, number>();
+  for (const row of staleDevicesRows.rows) {
+    staleDevicesByAccount.set(row.user_id, Number(row.stale));
+  }
+
   const now = Date.now();
   const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
@@ -309,6 +474,8 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     totalBytes += usage.totalBytes;
 
     const lastSyncAt = lastSyncByAccount.get(row.id) ?? null;
+    const wakeMinutes30 = wakeByAccount.get(row.id) ?? 0;
+    const wakeShare = totalWakeMinutes > 0 ? (wakeMinutes30 / totalWakeMinutes) * 100 : 0;
 
     return {
       id: row.id,
@@ -324,6 +491,10 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
       sessions: Number(row.sessionCount),
       recovery: { unused: health.unused, total: health.total },
       push: { subscriptions: health.subscriptions, reminders30: health.reminders30 },
+      wakeMinutes30,
+      wakeShare,
+      sync: countersByAccount.get(row.id) ?? emptySync(),
+      staleDevices: staleDevicesByAccount.get(row.id) ?? 0,
     };
   });
 
@@ -335,6 +506,7 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
       blocked,
       openInvites: inviteRows.length,
       totalBytes,
+      wake: { totalMinutes: totalWakeMinutes, cronMinutes, deployProbeMinutes },
     },
     accounts,
     invites: inviteRows.map((invite) => ({

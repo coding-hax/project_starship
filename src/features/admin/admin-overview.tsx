@@ -69,6 +69,14 @@ function formatSync(iso: string | null): string {
   });
 }
 
+/** "X Std. Y Min." aus Bruchteil-Minuten (#1233 AK5/AK6), auf ganze Minuten gerundet. */
+function formatDuration(minutes: number): string {
+  const totalMinutes = Math.round(minutes);
+  const hours = Math.floor(totalMinutes / 60);
+  const rest = totalMinutes % 60;
+  return hours > 0 ? `${hours} Std. ${rest} Min.` : `${rest} Min.`;
+}
+
 function formatRecovery(recovery: AccountOverviewRow['recovery']): string {
   if (recovery.total === 0) return 'keine erzeugt';
   if (recovery.unused === 0) return 'alle verbraucht';
@@ -127,6 +135,11 @@ function AccountCard({ account, isOwn, actions, setAccountStatus }: AccountCardP
       <Row label="Aktive Tage (30)">
         <span>{account.activeDays30}</span>
       </Row>
+      <Row label="Wachzeit 30 T">
+        <span>
+          {formatDuration(account.wakeMinutes30)} · {account.wakeShare.toFixed(1)} %
+        </span>
+      </Row>
       <Row label="Speicher">
         <span>{formatBytes(account.bytes)}</span>
       </Row>
@@ -144,6 +157,26 @@ function AccountCard({ account, isOwn, actions, setAccountStatus }: AccountCardP
       </Row>
       <Row label="Erinnerungen (30 Tage)">
         <span>{account.push.reminders30} ausgelöst</span>
+      </Row>
+      <Row label="Sync-Ablehnungen (30 T)">
+        <span>
+          {account.sync.rejections.malformed +
+            account.sync.rejections.missingRequired +
+            account.sync.rejections.constraint +
+            account.sync.rejections.quota}
+        </span>
+      </Row>
+      <Row label="Konflikte (30 T)">
+        <span>{account.sync.conflicts}</span>
+      </Row>
+      <Row label="Vollpulls (30 T)">
+        <span>{account.sync.fullPulls}</span>
+      </Row>
+      <Row label="Push-Störungen (30 T)">
+        <span>{account.sync.pushDropped + account.sync.pushFailed}</span>
+      </Row>
+      <Row label="Geräte mit anderem Stand">
+        <span>{account.staleDevices}</span>
       </Row>
       <ul className="admin-overview__modules">
         {(Object.keys(MODULE_LABEL) as Array<keyof typeof MODULE_LABEL>).map((key) => (
@@ -367,6 +400,15 @@ export function AdminOverview() {
         </Row>
         <Row label="Gesamtgröße">
           <span>{formatBytes(summary.totalBytes)}</span>
+        </Row>
+        <Row label="Wachzeit gesamt (30 T)">
+          <span>{formatDuration(summary.wake.totalMinutes)}</span>
+        </Row>
+        <Row label="davon Cron">
+          <span>{formatDuration(summary.wake.cronMinutes)}</span>
+        </Row>
+        <Row label="davon Deploy-Probe">
+          <span>{formatDuration(summary.wake.deployProbeMinutes)}</span>
         </Row>
       </SectionCard>
 

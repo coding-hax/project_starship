@@ -1,7 +1,9 @@
+import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   bigint,
   boolean,
+  check,
   date,
   foreignKey,
   index,
@@ -380,6 +382,15 @@ export const sessions = pgTable(
      * existed, or never re-authenticated since, stays `null` ("noch nie").
      */
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    /**
+     * Last build identifier this session reported, via the `X-App-Version`
+     * header on push/pull (#1235 AK4) — the same value `/api/health` reports as
+     * `version` (`process.env.VERCEL_GIT_COMMIT_SHA`). Nullable, no default:
+     * a session minted before this column existed, or one that never sends the
+     * header (dev, e2e, the Vercel "System Environment Variables" option off),
+     * stays `null` — same reasoning as `device_id`/`credential_id` above.
+     */
+    appVersion: text('app_version'),
   },
   (table) => [
     index('sessions_expires_at_idx').on(table.expiresAt),
@@ -492,6 +503,94 @@ export const adminAudit = pgTable(
 
 export type AdminAudit = typeof adminAudit.$inferSelect;
 export type NewAdminAudit = typeof adminAudit.$inferInsert;
+
+/**
+ * One row per 5-minute window in which some source kept the Neon compute awake
+ * (#1233) — server infrastructure like `sessions`/`user_activity_days` above: no
+ * `syncColumns`, no `SYNC_REGISTRY` entry, no Dexie counterpart;
+ * `check-tenant-isolation.sh` only scans tables that spread `syncColumns`, so
+ * this one sits structurally outside its reach.
+ *
+ * A row is **either** an account's window (`user_id` set, `system_source` null)
+ * **or** a system source's window (`system_source` set, `user_id` null) — never
+ * both, never neither. The CHECK makes that structural instead of conventional.
+ * `user_id` cascades on account deletion (AK1), the same reasoning as
+ * `user_activity_days`; `system_source` has nothing to cascade from.
+ *
+ * No surrogate `id`: the two **partial** unique indexes below are each the
+ * `ON CONFLICT DO NOTHING` upsert target for their own row kind, and each sits
+ * over columns the CHECK already guarantees are non-null on that side — so
+ * there is no "NULLs are distinct" ambiguity to worry about, unlike a single
+ * `(source, window_start)` key spanning both kinds would have. A plain
+ * `pgTable` with no primary key at all is fine in Postgres; nothing here is
+ * ever updated or looked up by a synthetic id.
+ */
+export const userActivityWindows = pgTable(
+  'user_activity_windows',
+  {
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    systemSource: text('system_source').$type<'cron' | 'deploy-probe'>(),
+    windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    check(
+      'user_activity_windows_account_xor_system',
+      sql`(${table.userId} is null) <> (${table.systemSource} is null)`,
+    ),
+    uniqueIndex('user_activity_windows_account_window_idx')
+      .on(table.userId, table.windowStart)
+      .where(sql`${table.systemSource} is null`),
+    uniqueIndex('user_activity_windows_system_window_idx')
+      .on(table.systemSource, table.windowStart)
+      .where(sql`${table.userId} is null`),
+    index('user_activity_windows_window_start_idx').on(table.windowStart),
+  ],
+);
+
+export type UserActivityWindow = typeof userActivityWindows.$inferSelect;
+export type NewUserActivityWindow = typeof userActivityWindows.$inferInsert;
+
+/**
+ * One row per account per calendar day it rejected a sync mutation, hit a
+ * conflict, ran a full pull, or lost a push delivery (#1235) — server
+ * infrastructure like `user_activity_days`/`user_activity_windows` above: no
+ * `syncColumns`, no `SYNC_REGISTRY` entry, no Dexie counterpart;
+ * `check-tenant-isolation.sh` only scans tables that spread `syncColumns`, so
+ * this one sits structurally outside its reach.
+ *
+ * `(user_id, day)` as the primary key is the natural "per account, per day"
+ * identity (AK1-AK3) and the `ON CONFLICT DO UPDATE` upsert target in one — no
+ * surrogate `id` needed, same reasoning as `user_activity_days`. `user_id`
+ * cascades on account deletion, same as every other per-account server table
+ * here.
+ *
+ * One wide row per day instead of one row per event keeps the row count at
+ * O(accounts × days), never O(events) (AK5 "kein Schreib-Hotspot") — a single
+ * upsert can bump several columns of one push's charge at once. Every column
+ * is a plain count, never a mutation id, table name, endpoint, or error text
+ * (AK8 "kein Inhalt" — structural, not just convention).
+ */
+export const accountSyncCounters = pgTable(
+  'account_sync_counters',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: date('day').notNull(),
+    rejectedMalformed: integer('rejected_malformed').notNull().default(0),
+    rejectedMissingRequired: integer('rejected_missing_required').notNull().default(0),
+    rejectedConstraint: integer('rejected_constraint').notNull().default(0),
+    rejectedQuota: integer('rejected_quota').notNull().default(0),
+    conflicts: integer('conflicts').notNull().default(0),
+    fullPulls: integer('full_pulls').notNull().default(0),
+    pushSubscriptionsDropped: integer('push_subscriptions_dropped').notNull().default(0),
+    pushDeliveryFailures: integer('push_delivery_failures').notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] })],
+);
+
+export type AccountSyncCounter = typeof accountSyncCounters.$inferSelect;
+export type NewAccountSyncCounter = typeof accountSyncCounters.$inferInsert;
 
 /**
  * WebAuthn challenges. Kept server-side rather than in a cookie so a replay cannot

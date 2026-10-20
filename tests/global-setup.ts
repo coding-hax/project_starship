@@ -65,6 +65,46 @@ export function createColdRouteProbe(port: number, sessionToken: string): RouteP
   };
 }
 
+/**
+ * Same on-demand-compile problem as `createColdRouteProbe` (issue #1142), for the
+ * admin area — surfaced by #1233 shifting the shard split so an admin spec became
+ * shard 1's first-ever hit of `/admin`. Unlike `/uebersicht`, the throwaway session
+ * above is never an admin account at this point (none exists yet), so `/admin`
+ * itself answers `notFound()` (404) once compiled rather than 200 — that 404 still
+ * proves the Server Component ran, which is all this warm-up needs. The PATCH
+ * target is a nonexistent id: `requireAdmin()` rejects the throwaway session
+ * before the handler ever looks the id up, so this never touches a real row.
+ * Any fetch that completes (not just the ones that happen to 200) means Next
+ * finished compiling that route instead of still holding the connection open.
+ */
+export function createAdminRouteProbe(port: number, sessionToken: string): RouteProbe {
+  const cookie = `starship_session=${sessionToken}`;
+  const requests: Array<{ url: string; init: RequestInit }> = [
+    { url: `http://localhost:${port}/admin`, init: { headers: { cookie }, redirect: 'manual' } },
+    { url: `http://localhost:${port}/api/admin/accounts`, init: { headers: { cookie } } },
+    {
+      url: `http://localhost:${port}/api/admin/accounts/00000000-0000-0000-0000-000000000000`,
+      init: {
+        method: 'PATCH',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'block' }),
+      },
+    },
+  ];
+
+  return async () => {
+    for (const { url, init } of requests) {
+      try {
+        const response = await fetch(url, init);
+        if (response.status >= 500) return { ready: false, detail: `${url} -> HTTP ${response.status}` };
+      } catch (error) {
+        return { ready: false, detail: error instanceof Error ? error.message : String(error) };
+      }
+    }
+    return { ready: true, detail: 'ok' };
+  };
+}
+
 async function waitForColdRouteReady(): Promise<void> {
   const scope = process.env.E2E_SCOPE ?? 'all';
   const port = scope === 'offline' ? PORT_PROD : PORT;
@@ -72,6 +112,11 @@ async function waitForColdRouteReady(): Promise<void> {
 
   await waitForRouteReady(createColdRouteProbe(port, session.token), {
     route: '/uebersicht',
+    deadlineMs: DEV_SERVER_READY_TIMEOUT_MS,
+  });
+
+  await waitForRouteReady(createAdminRouteProbe(port, session.token), {
+    route: '/admin',
     deadlineMs: DEV_SERVER_READY_TIMEOUT_MS,
   });
 }
