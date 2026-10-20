@@ -9,12 +9,18 @@ const SESSION_USER = {
   deviceId: null,
   lastSeenAt: null,
   blockedAt: null,
+  appVersion: null,
 };
+const recordSessionVersionMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock('@/auth/session', () => ({
   requireUser: vi.fn().mockResolvedValue(SESSION_USER),
+  recordSessionVersion: recordSessionVersionMock,
   UnauthorizedError: class UnauthorizedError extends Error {},
   AccountBlockedError: class AccountBlockedError extends Error {},
 }));
+
+const recordSyncCountersMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+vi.mock('@/db/sync-counters', () => ({ recordSyncCounters: recordSyncCountersMock }));
 
 const insertValues = vi.fn().mockResolvedValue(undefined);
 const updateWhere = vi.fn().mockResolvedValue(undefined);
@@ -68,6 +74,8 @@ describe('POST /api/sync/push', () => {
     updateWhere.mockClear();
     selectLimit.mockReset().mockResolvedValue([]);
     isOverLimitMock.mockReset().mockResolvedValue(false);
+    recordSyncCountersMock.mockReset().mockResolvedValue(undefined);
+    recordSessionVersionMock.mockReset().mockResolvedValue(undefined);
   });
 
   it('applies the valid mutations and rejects the malformed one individually', async () => {
@@ -200,6 +208,29 @@ describe('POST /api/sync/push', () => {
 
       expect(response.status).toBe(200);
       expect(isOverLimitMock).toHaveBeenCalledWith(SESSION_USER.userId);
+    });
+  });
+
+  describe('Sync-Zähler (#1235 AK6)', () => {
+    it('antwortet normal, selbst wenn recordSyncCounters wirft', async () => {
+      recordSyncCountersMock.mockRejectedValue(new Error('counter db down'));
+      const { POST } = await import('./route');
+
+      const response = await POST(makeRequest([validMutation('a')]));
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body).toEqual({ applied: ['a'], conflicts: [], rejected: [] });
+    });
+
+    it('antwortet normal mit 413, selbst wenn recordSyncCounters im Quote-Zweig wirft', async () => {
+      isOverLimitMock.mockResolvedValue(true);
+      recordSyncCountersMock.mockRejectedValue(new Error('counter db down'));
+      const { POST } = await import('./route');
+
+      const response = await POST(makeRequest([validMutation('a')]));
+
+      expect(response.status).toBe(413);
     });
   });
 });

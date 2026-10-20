@@ -1,3 +1,4 @@
+import { APP_VERSION } from '@/app-version';
 import { stashDisplacedJournalKey } from '@/features/journal/journal-key-stash';
 import {
   ensureAccountChecked,
@@ -117,7 +118,10 @@ export async function push(): Promise<void> {
   try {
     response = await fetch('/api/sync/push', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...(APP_VERSION ? { 'x-app-version': APP_VERSION } : {}),
+      },
       body: JSON.stringify({ mutations }),
       signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
     });
@@ -231,6 +235,7 @@ export async function pull(): Promise<PullResult> {
     let response: Response;
     try {
       response = await fetch(`/api/sync/pull?since=${since}`, {
+        headers: APP_VERSION ? { 'x-app-version': APP_VERSION } : undefined,
         signal: AbortSignal.timeout(SYNC_FETCH_TIMEOUT_MS),
       });
     } catch {

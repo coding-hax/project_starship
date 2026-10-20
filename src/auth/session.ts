@@ -92,6 +92,9 @@ export interface SessionUser {
   userLastSeenAt: Date | null;
   /** Set while the account is locked — `requireUser()` turns this into a 403. */
   blockedAt: Date | null;
+  /** Last build identifier this session reported (#1235 AK4) — `null` until the
+   * client sends an `X-App-Version` header, or if it never does. */
+  appVersion: string | null;
 }
 
 /**
@@ -121,6 +124,7 @@ export async function getSession(): Promise<SessionUser | null> {
       credentialId: sessions.credentialId,
       deviceId: sessions.deviceId,
       lastSeenAt: sessions.lastSeenAt,
+      appVersion: sessions.appVersion,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -265,6 +269,23 @@ async function touchLastSeen(sessionId: string, lastSeenAt: Date | null): Promis
     .update(sessions)
     .set({ lastSeenAt: new Date() })
     .where(and(eq(sessions.id, sessionId), or(isNull(sessions.lastSeenAt), lt(sessions.lastSeenAt, throttleBoundary))));
+}
+
+/**
+ * Stamps `sessions.app_version` with the build identifier the client just
+ * reported via `X-App-Version` (#1235 AK4). `reported` empty/absent, or equal
+ * to `current` (the value already on file for this session), is a no-op —
+ * "schreibt nur, wenn sie sich ändert", not a write on every push/pull.
+ * Wrapped by its callers in a try/catch (AK6): a broken write here must never
+ * break the sync it rides along with.
+ */
+export async function recordSessionVersion(
+  sessionId: string,
+  current: string | null,
+  reported: string | null,
+): Promise<void> {
+  if (!reported || reported === current) return;
+  await db.update(sessions).set({ appVersion: reported }).where(eq(sessions.id, sessionId));
 }
 
 /**

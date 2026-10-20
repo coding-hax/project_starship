@@ -232,6 +232,13 @@
       "when": 1792440549796,
       "tag": "0032_thankful_scalphunter",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792457018111,
+      "tag": "0033_high_nightshade",
+      "breakpoints": true
     }
   ]
 }

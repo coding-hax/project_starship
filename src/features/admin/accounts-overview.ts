@@ -33,6 +33,18 @@ export interface AccountOverviewRow {
    * share (0–100) of the total across all accounts + system sources (#1233 AK5). */
   wakeMinutes30: number;
   wakeShare: number;
+  /** 30-day sums from `account_sync_counters` (#1235 AK1-AK3) — only numbers,
+   * never a mutation id, table name, endpoint, or error text (AK8). */
+  sync: {
+    rejections: { malformed: number; missingRequired: number; constraint: number; quota: number };
+    conflicts: number;
+    fullPulls: number;
+    pushDropped: number;
+    pushFailed: number;
+  };
+  /** Active sessions whose last reported `app_version` differs from the
+   * server's own build (#1235 AK4). */
+  staleDevices: number;
 }
 
 export interface InviteOverviewRow {
@@ -71,6 +83,16 @@ export interface AccountsOverview {
 const AUDIT_DISPLAY_LIMIT = 200;
 
 type ModuleKey = 'aufgaben' | 'termine' | 'routinen' | 'journal';
+
+function emptySync(): AccountOverviewRow['sync'] {
+  return {
+    rejections: { malformed: 0, missingRequired: 0, constraint: 0, quota: 0 },
+    conflicts: 0,
+    fullPulls: 0,
+    pushDropped: 0,
+    pushFailed: 0,
+  };
+}
 
 function emptyModules(): AccountOverviewRow['modules'] {
   return {
@@ -253,6 +275,61 @@ interface WakeRow {
 }
 
 /**
+ * 30-day sums of `account_sync_counters` (#1235 AK7) — one row per account,
+ * summed across days rather than correlated per account row, same reasoning as
+ * `LAST_SYNC_QUERY`/`HEALTH_QUERY`/`WAKE_QUERY` above.
+ */
+const COUNTERS_QUERY = sql`
+  select
+    user_id,
+    sum(rejected_malformed)::bigint as rejected_malformed,
+    sum(rejected_missing_required)::bigint as rejected_missing_required,
+    sum(rejected_constraint)::bigint as rejected_constraint,
+    sum(rejected_quota)::bigint as rejected_quota,
+    sum(conflicts)::bigint as conflicts,
+    sum(full_pulls)::bigint as full_pulls,
+    sum(push_subscriptions_dropped)::bigint as push_subscriptions_dropped,
+    sum(push_delivery_failures)::bigint as push_delivery_failures
+  from account_sync_counters
+  where day >= current_date - 30
+  group by user_id
+`;
+
+interface CountersRow {
+  [key: string]: unknown;
+  user_id: string;
+  rejected_malformed: string;
+  rejected_missing_required: string;
+  rejected_constraint: string;
+  rejected_quota: string;
+  conflicts: string;
+  full_pulls: string;
+  push_subscriptions_dropped: string;
+  push_delivery_failures: string;
+}
+
+/**
+ * Active sessions reporting a build other than the server's own (#1235 AK4,
+ * "andere Geräte"). `is distinct from` also counts a session as stale if the
+ * server itself has no known build (`VERCEL_GIT_COMMIT_SHA` unset, e.g. local
+ * dev) and the session reports one anyway — null-safe either direction.
+ */
+const STALE_DEVICES_QUERY = sql`
+  select user_id, count(*)::bigint as stale
+  from sessions
+  where expires_at > now()
+    and app_version is not null
+    and app_version is distinct from ${process.env.VERCEL_GIT_COMMIT_SHA ?? null}
+  group by user_id
+`;
+
+interface StaleDevicesRow {
+  [key: string]: unknown;
+  user_id: string;
+  stale: string;
+}
+
+/**
  * The full `/api/admin/accounts` payload (AK2-AK7) — never a user content field
  * (AK8, see `src/app/api/admin/accounts/route.ts`'s own test). `cache()` (react)
  * memoises this for the lifetime of one request (AK4 "für die Dauer eines
@@ -260,7 +337,17 @@ interface WakeRow {
  * route handler's own copy never runs the aggregation twice.
  */
 export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => {
-  const [accountRows, usageRows, lastSyncRows, healthRows, wakeRows, inviteRows, auditRows] = await Promise.all([
+  const [
+    accountRows,
+    usageRows,
+    lastSyncRows,
+    healthRows,
+    wakeRows,
+    countersRows,
+    staleDevicesRows,
+    inviteRows,
+    auditRows,
+  ] = await Promise.all([
     db
       .select({
         id: users.id,
@@ -285,6 +372,8 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     db.execute<LastSyncRow>(LAST_SYNC_QUERY),
     db.execute<HealthRow>(HEALTH_QUERY),
     db.execute<WakeRow>(WAKE_QUERY),
+    db.execute<CountersRow>(COUNTERS_QUERY),
+    db.execute<StaleDevicesRow>(STALE_DEVICES_QUERY),
     db
       .select({ id: invites.id, label: invites.label, expiresAt: invites.expiresAt })
       .from(invites)
@@ -343,6 +432,27 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
     }
   }
 
+  const countersByAccount = new Map<string, AccountOverviewRow['sync']>();
+  for (const row of countersRows.rows) {
+    countersByAccount.set(row.user_id, {
+      rejections: {
+        malformed: Number(row.rejected_malformed),
+        missingRequired: Number(row.rejected_missing_required),
+        constraint: Number(row.rejected_constraint),
+        quota: Number(row.rejected_quota),
+      },
+      conflicts: Number(row.conflicts),
+      fullPulls: Number(row.full_pulls),
+      pushDropped: Number(row.push_subscriptions_dropped),
+      pushFailed: Number(row.push_delivery_failures),
+    });
+  }
+
+  const staleDevicesByAccount = new Map<string, number>();
+  for (const row of staleDevicesRows.rows) {
+    staleDevicesByAccount.set(row.user_id, Number(row.stale));
+  }
+
   const now = Date.now();
   const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
   const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
@@ -383,6 +493,8 @@ export const getAccountsOverview = cache(async (): Promise<AccountsOverview> => 
       push: { subscriptions: health.subscriptions, reminders30: health.reminders30 },
       wakeMinutes30,
       wakeShare,
+      sync: countersByAccount.get(row.id) ?? emptySync(),
+      staleDevices: staleDevicesByAccount.get(row.id) ?? 0,
     };
   });
 
