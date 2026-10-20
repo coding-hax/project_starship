@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { ADMIN_NOT_FOUND_PATH } from '@/auth/admin-route';
 import { createOtherAccount, currentAccountId, nonAdminContext, registerPasskey, resetAppData, seedInvite } from './helpers';
 
 /**
@@ -13,16 +14,24 @@ test.beforeEach(async ({ page }) => {
 
 /**
  * Both AK5 bodies are the same generic 404 page rendered twice, each from its
- * own request — `next dev` stamps every asset URL (`?v=<ms-timestamp>`) with
- * the live-reload clock at render time, so the two requests' bytes differ by
- * that timestamp alone even when the page is otherwise identical (confirmed
- * via CI: a diff of exactly the `?v=` digits, nothing else). Same dev-only
- * artifact as the `AK8` comment below, just inside the body instead of a
- * header — normalize it away rather than move this to a `.prod.spec.ts`,
- * since content-hashed production assets wouldn't need it at all.
+ * own request — two dev-only, per-render artifacts never match byte-for-byte
+ * on their own even when the page is otherwise identical:
+ *
+ * 1. `next dev` stamps every asset URL (`?v=<ms-timestamp>`) with the
+ *    live-reload clock at render time (confirmed via CI: a diff of exactly
+ *    the `?v=` digits, nothing else). Same dev-only artifact as the `AK8`
+ *    comment below, just inside the body instead of a header.
+ * 2. Next's RSC bootstrap script carries a fresh `self.__next_r="<id>"` on
+ *    every single render, even two requests to the exact same URL back to
+ *    back (confirmed locally: identical `?v=`-stripped bodies for one path
+ *    requested twice, differing only in this id) — unrelated to routing,
+ *    nothing byte-equality here could ever meaningfully check.
+ *
+ * Neither is content-hashed production assets' problem, so normalize both
+ * away rather than move this to a `.prod.spec.ts`.
  */
 function stripDevAssetVersion(html: string): string {
-  return html.replace(/\?v=\d+/g, '?v=X');
+  return html.replace(/\?v=\d+/g, '?v=X').replace(/__next_r="[^"]*"/g, '__next_r="X"');
 }
 
 test('AK5 (API): /api/admin/accounts antwortet einem Nutzer-Konto byte-gleich zu einer nicht existierenden API-Route', async ({
@@ -31,8 +40,14 @@ test('AK5 (API): /api/admin/accounts antwortet einem Nutzer-Konto byte-gleich zu
 }) => {
   const { page, close } = await nonAdminContext(browser, baseURL);
 
+  // `guardAdmin()` answers a non-admin with a redirect to `ADMIN_NOT_FOUND_PATH`
+  // (AK5) and `page.request.get` follows it, so `adminApi` actually renders AT
+  // that path — comparing against anything else would fail on Next's RSC
+  // bootstrap script, which embeds the response's own URL (the router state a
+  // genuinely unmatched route needs for client-side hydration) and therefore
+  // differs between any two distinct paths regardless of admin-gating.
   const adminApi = await page.request.get('/api/admin/accounts');
-  const unknownApi = await page.request.get('/api/dieser-pfad-existiert-nicht-1224');
+  const unknownApi = await page.request.get(ADMIN_NOT_FOUND_PATH);
   expect(adminApi.status()).toBe(unknownApi.status());
   expect(stripDevAssetVersion(await adminApi.text())).toBe(stripDevAssetVersion(await unknownApi.text()));
 
@@ -46,12 +61,14 @@ test('AK5 (Seite): /admin antwortet einem Nutzer-Konto byte-gleich zu einer nich
   const { page, close } = await nonAdminContext(browser, baseURL);
 
   // Read each navigation's body before the next `goto` replaces the frame —
-  // Playwright's `Response.text()` throws once the frame has moved on.
+  // Playwright's `Response.text()` throws once the frame has moved on. Compare
+  // against `ADMIN_NOT_FOUND_PATH` itself, not an unrelated made-up path — see
+  // the comment on the API test above for why any other target never matches.
   const adminResponse = await page.goto('/admin');
   const adminStatus = adminResponse?.status();
   const adminBody = await adminResponse?.text();
 
-  const unknownResponse = await page.goto('/dieser-pfad-existiert-nicht-1224');
+  const unknownResponse = await page.goto(ADMIN_NOT_FOUND_PATH);
   const unknownStatus = unknownResponse?.status();
   const unknownBody = await unknownResponse?.text();
 
