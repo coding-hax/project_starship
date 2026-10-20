@@ -3,7 +3,7 @@
 ## src/db
 
 - `schema.ts` — Drizzle-Schema, einzige Quelle der Wahrheit; users-Tabelle, Mandanten-PK
-- `sync-tables.ts` / `sync-lock.ts` — Sync-Felder je Tabelle + Advisory-Lock
+- `sync-tables.ts` / `sync-lock.ts` / `sync-counters.ts` — Felder, Lock, Zähler
 - `index.ts` / `migrate.ts` — DB-Verbindung, Migrationen anwenden
 - `migrations/` — generierte Migrationen, nie von Hand
 - `migrations/down/` — Down-Pfad je Migration
