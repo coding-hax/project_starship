@@ -55,7 +55,7 @@ test('AK3: ein während der Sitzung herabgestuftes oder gesperrtes Admin-Konto s
     const downgraded = await page.request.get('/api/admin/accounts');
     const unknown = await page.request.get(ADMIN_NOT_FOUND_PATH);
     expect(downgraded.status()).toBe(unknown.status());
-    expect(await downgraded.text()).toBe(await unknown.text());
+    expect(stripDevAssetVersion(await downgraded.text())).toBe(stripDevAssetVersion(await unknown.text()));
 
     // Sperren statt herabstufen: `requireUser()` wirft `AccountBlockedError`
     // (403) noch vor der Rollenprüfung — die Rolle bleibt hier absichtlich
