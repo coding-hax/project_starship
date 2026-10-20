@@ -66,25 +66,31 @@ export function useAdminActions(onDone: () => void) {
   );
 
   const block = useCallback(
-    (id: string) =>
-      run(id, () =>
-        fetch(`/api/admin/accounts/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'block' }),
-        }),
+    (id: string, onOk?: () => void) =>
+      run(
+        id,
+        () =>
+          fetch(`/api/admin/accounts/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'block' }),
+          }),
+        onOk,
       ),
     [run],
   );
 
   const unblock = useCallback(
-    (id: string) =>
-      run(id, () =>
-        fetch(`/api/admin/accounts/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'unblock' }),
-        }),
+    (id: string, onOk?: () => void) =>
+      run(
+        id,
+        () =>
+          fetch(`/api/admin/accounts/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'unblock' }),
+          }),
+        onOk,
       ),
     [run],
   );
