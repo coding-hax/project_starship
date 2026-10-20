@@ -69,6 +69,14 @@ function formatSync(iso: string | null): string {
   });
 }
 
+/** "X Std. Y Min." aus Bruchteil-Minuten (#1233 AK5/AK6), auf ganze Minuten gerundet. */
+function formatDuration(minutes: number): string {
+  const totalMinutes = Math.round(minutes);
+  const hours = Math.floor(totalMinutes / 60);
+  const rest = totalMinutes % 60;
+  return hours > 0 ? `${hours} Std. ${rest} Min.` : `${rest} Min.`;
+}
+
 function formatRecovery(recovery: AccountOverviewRow['recovery']): string {
   if (recovery.total === 0) return 'keine erzeugt';
   if (recovery.unused === 0) return 'alle verbraucht';
@@ -126,6 +134,11 @@ function AccountCard({ account, isOwn, actions, setAccountStatus }: AccountCardP
       </Row>
       <Row label="Aktive Tage (30)">
         <span>{account.activeDays30}</span>
+      </Row>
+      <Row label="Wachzeit 30 T">
+        <span>
+          {formatDuration(account.wakeMinutes30)} · {account.wakeShare.toFixed(1)} %
+        </span>
       </Row>
       <Row label="Speicher">
         <span>{formatBytes(account.bytes)}</span>
@@ -367,6 +380,15 @@ export function AdminOverview() {
         </Row>
         <Row label="Gesamtgröße">
           <span>{formatBytes(summary.totalBytes)}</span>
+        </Row>
+        <Row label="Wachzeit gesamt (30 T)">
+          <span>{formatDuration(summary.wake.totalMinutes)}</span>
+        </Row>
+        <Row label="davon Cron">
+          <span>{formatDuration(summary.wake.cronMinutes)}</span>
+        </Row>
+        <Row label="davon Deploy-Probe">
+          <span>{formatDuration(summary.wake.deployProbeMinutes)}</span>
         </Row>
       </SectionCard>
 

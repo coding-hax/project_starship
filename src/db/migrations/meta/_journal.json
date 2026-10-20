@@ -225,6 +225,13 @@
       "when": 1792422986648,
       "tag": "0031_clever_tombstone",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792440549796,
+      "tag": "0032_thankful_scalphunter",
+      "breakpoints": true
     }
   ]
 }

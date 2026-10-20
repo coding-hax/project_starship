@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
+import { recordSystemWindow } from '@/auth/activity';
 import { requireUser } from '@/auth/session';
 import { sendDueReminders } from '@/push/reminders';
 
@@ -54,11 +55,17 @@ export async function POST(request: Request) {
 
   const header = request.headers.get('authorization');
   const bearer = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
-  const authorized = (bearer !== null && safeEqual(bearer, secret)) || (await hasValidAdminSession());
+  const isCron = bearer !== null && safeEqual(bearer, secret);
+  const authorized = isCron || (await hasValidAdminSession());
 
   if (!authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  // Only the real cron, not a manual admin kick (#1233 AK3) — a manual kick is
+  // already counted as that admin's account window via requireUser() above, so
+  // counting it here too would double it.
+  if (isCron) await recordSystemWindow('cron');
 
   // The kinds and their outcome, never an endpoint or a key (AC9).
   const result = await sendDueReminders(resolveNow(request));
