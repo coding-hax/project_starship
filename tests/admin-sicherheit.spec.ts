@@ -11,6 +11,20 @@ test.beforeEach(async ({ page }) => {
   await registerPasskey(page, null);
 });
 
+/**
+ * Both AK5 bodies are the same generic 404 page rendered twice, each from its
+ * own request — `next dev` stamps every asset URL (`?v=<ms-timestamp>`) with
+ * the live-reload clock at render time, so the two requests' bytes differ by
+ * that timestamp alone even when the page is otherwise identical (confirmed
+ * via CI: a diff of exactly the `?v=` digits, nothing else). Same dev-only
+ * artifact as the `AK8` comment below, just inside the body instead of a
+ * header — normalize it away rather than move this to a `.prod.spec.ts`,
+ * since content-hashed production assets wouldn't need it at all.
+ */
+function stripDevAssetVersion(html: string): string {
+  return html.replace(/\?v=\d+/g, '?v=X');
+}
+
 test('AK5 (API): /api/admin/accounts antwortet einem Nutzer-Konto byte-gleich zu einer nicht existierenden API-Route', async ({
   browser,
   baseURL,
@@ -20,7 +34,7 @@ test('AK5 (API): /api/admin/accounts antwortet einem Nutzer-Konto byte-gleich zu
   const adminApi = await page.request.get('/api/admin/accounts');
   const unknownApi = await page.request.get('/api/dieser-pfad-existiert-nicht-1224');
   expect(adminApi.status()).toBe(unknownApi.status());
-  expect(await adminApi.text()).toBe(await unknownApi.text());
+  expect(stripDevAssetVersion(await adminApi.text())).toBe(stripDevAssetVersion(await unknownApi.text()));
 
   await close();
 });
@@ -42,7 +56,7 @@ test('AK5 (Seite): /admin antwortet einem Nutzer-Konto byte-gleich zu einer nich
   const unknownBody = await unknownResponse?.text();
 
   expect(adminStatus).toBe(unknownStatus);
-  expect(adminBody).toBe(unknownBody);
+  expect(stripDevAssetVersion(adminBody ?? '')).toBe(stripDevAssetVersion(unknownBody ?? ''));
 
   await close();
 });
