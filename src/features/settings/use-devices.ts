@@ -23,14 +23,29 @@ export function useDevices() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const credentialsResponse = await fetch('/api/auth/credentials');
-    if (!credentialsResponse.ok) {
+    try {
+      let credentialsResponse: Response;
+      try {
+        credentialsResponse = await fetch('/api/auth/credentials');
+      } catch {
+        // A network-level failure (not a bad status) — e.g. a service-worker
+        // controller handoff landing mid-request right after a reload rejects
+        // the in-flight fetch instead of answering it (#1224 CI: observed as
+        // an unhandled `TypeError: Failed to fetch`, panel stuck on 'loading'
+        // forever since nothing downstream ever ran). One immediate retry
+        // absorbs that single hiccup without masking a real, repeatable one.
+        credentialsResponse = await fetch('/api/auth/credentials');
+      }
+      if (!credentialsResponse.ok) {
+        setPhase('error');
+        return;
+      }
+      const credentialsBody = await credentialsResponse.json();
+      setCredentials(credentialsBody.credentials);
+      setPhase('ready');
+    } catch {
       setPhase('error');
-      return;
     }
-    const credentialsBody = await credentialsResponse.json();
-    setCredentials(credentialsBody.credentials);
-    setPhase('ready');
   }, []);
 
   // queueMicrotask, not a direct call: react-hooks/set-state-in-effect flags a
