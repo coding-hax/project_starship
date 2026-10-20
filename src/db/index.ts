@@ -15,21 +15,34 @@ import * as schema from './schema';
  *
  * A plain connection string, no provider-specific driver — ADR-0001 requires that
  * moving off Neon stays a configuration change, not a rewrite.
+ *
+ * Cached on `globalThis`, not a plain module-level variable — `next dev`
+ * re-evaluates this module on on-demand compiles/HMR without tearing down the
+ * previous instance first. A module-level `let` would mint a brand-new,
+ * unrelated `Pool` each time that happens, and a write committed through one
+ * pool was then not reliably visible yet to a query issued moments later
+ * through a freshly-minted other one — observed as e2e flakes where a PATCH's
+ * own confirmed response disagreed with a page reload or a raw verification
+ * query seconds later (`auth-geraete.spec.ts` AK1, `admin-aktionen.spec.ts`
+ * AK2, #1224). `globalThis` survives the module re-evaluation; production
+ * never HMRs, so this is a no-op behavior change there.
  */
-let pool: Pool | undefined;
-let instance: NodePgDatabase<typeof schema> | undefined;
+const globalForDb = globalThis as unknown as {
+  dbPool?: Pool;
+  dbInstance?: NodePgDatabase<typeof schema>;
+};
 
 function connect(): NodePgDatabase<typeof schema> {
-  if (instance) return instance;
+  if (globalForDb.dbInstance) return globalForDb.dbInstance;
 
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error('DATABASE_URL is not set. Copy .env.example to .env.local.');
   }
 
-  pool = new Pool({ connectionString: url });
-  instance = drizzle(pool, { schema });
-  return instance;
+  globalForDb.dbPool = new Pool({ connectionString: url });
+  globalForDb.dbInstance = drizzle(globalForDb.dbPool, { schema });
+  return globalForDb.dbInstance;
 }
 
 /**

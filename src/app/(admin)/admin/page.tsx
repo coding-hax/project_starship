@@ -1,7 +1,5 @@
 import type { Viewport } from 'next';
 import Link from 'next/link';
-import { notFound, redirect } from 'next/navigation';
-import { getSession } from '@/auth/session';
 import { AdminOverview } from '@/features/admin/admin-overview';
 import { IconChevronLeft } from '@/ui/icons';
 import './admin.css';
@@ -16,18 +14,9 @@ export const viewport: Viewport = {
   ],
 };
 
-/**
- * Server Component, not gated by middleware.ts's cookie-only check alone (AK1):
- * `getSession()` resolves the account so a signed-in non-admin gets `notFound()`
- * (404, not 403 — the existence of /admin is not information a non-admin gets
- * to have), and a missing session redirects the same way `(app)` routes would
- * if middleware ever let one through.
- */
-export default async function AdminPage() {
-  const session = await getSession();
-  if (!session) redirect('/anmelden');
-  if (session.role !== 'admin') notFound();
-
+/** The role/session gate lives in `(admin)/layout.tsx` — not middleware.ts's
+ * cookie-only check alone (AK1), see that file for why. */
+export default function AdminPage() {
   return (
     <main className="admin__main">
       <header className="admin__topbar">

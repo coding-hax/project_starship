@@ -19,8 +19,24 @@ const PROTECTED_PREFIXES = [
   '/api/admin',
 ];
 
+function matchesPrefix(pathname: string, prefixes: string[]): boolean {
+  return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/'));
+}
+
 function isProtected(pathname: string): boolean {
-  return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/'));
+  return matchesPrefix(pathname, PROTECTED_PREFIXES);
+}
+
+/** `/admin` + `/api/admin/*` (#1224 AK8): neither may ever reach a cache. */
+const ADMIN_PREFIXES = ['/admin', '/api/admin'];
+
+function isAdminPath(pathname: string): boolean {
+  return matchesPrefix(pathname, ADMIN_PREFIXES);
+}
+
+/** `/einladung/<token>` (#1224 AK9): the token must never ride a Referer header. */
+function isInvitePath(pathname: string): boolean {
+  return matchesPrefix(pathname, ['/einladung']);
 }
 
 // Edge runtime: no `Buffer`/`node:crypto`, only the Web Crypto globals.
@@ -84,6 +100,19 @@ export function middleware(request: NextRequest): NextResponse {
   const response = NextResponse.next({ request: { headers } });
   const csp = headers.get('content-security-policy');
   if (csp) response.headers.set('content-security-policy', csp);
+
+  // AK8: neither the admin document nor any `/api/admin/*` response may ever land
+  // in a cache — a browser cache as much as the service worker's (sw.ts has its own
+  // NetworkOnly rule in front of defaultCache, belt and suspenders).
+  if (isAdminPath(request.nextUrl.pathname)) {
+    response.headers.set('cache-control', 'no-store');
+  }
+  // AK9: the invite token sits in the URL — a Referer header would leak it to
+  // whatever `/einladung/<token>` might ever link to.
+  if (isInvitePath(request.nextUrl.pathname)) {
+    response.headers.set('referrer-policy', 'no-referrer');
+  }
+
   return response;
 }
 

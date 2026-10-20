@@ -1,8 +1,31 @@
 'use client';
 
+import { startAuthentication } from '@simplewebauthn/browser';
 import { useCallback, useState } from 'react';
 
 export type AdminActionError = 'self' | 'not-found' | 'last-admin' | 'failed';
+
+/**
+ * Runs the step-up ceremony (#1224 AK10) and, only if it succeeds, sends
+ * `method` to `url` with the assertion attached. A same-origin `fetch()` sends
+ * `Origin` on every non-GET request on its own (AK6), nothing to add here.
+ * Any failure — options request, a cancelled/rejected ceremony — throws
+ * before `url` is ever reached, so `run()` below turns it into the generic
+ * `failed` error without a destructive request having gone out.
+ */
+async function stepUpThenFetch(url: string, method: 'POST' | 'DELETE'): Promise<Response> {
+  const optionsResponse = await fetch('/api/admin/step-up/options', { method: 'POST' });
+  if (!optionsResponse.ok) throw new Error('step-up-options-failed');
+  const options = await optionsResponse.json();
+
+  const assertion = await startAuthentication({ optionsJSON: options });
+
+  return fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ challenge: options.challenge, assertion }),
+  });
+}
 
 /**
  * The write half of /admin (S5, #1204) — talks to `/api/admin/accounts/*`
@@ -77,7 +100,7 @@ export function useAdminActions(onDone: () => void) {
       setReissueLink(null);
       return run(
         id,
-        () => fetch(`/api/admin/accounts/${id}/reissue`, { method: 'POST' }),
+        () => stepUpThenFetch(`/api/admin/accounts/${id}/reissue`, 'POST'),
         (body) => {
           const link = (body as { link?: string } | null)?.link;
           if (link) setReissueLink({ id, link });
@@ -88,12 +111,12 @@ export function useAdminActions(onDone: () => void) {
   );
 
   const deleteJournal = useCallback(
-    (id: string) => run(id, () => fetch(`/api/admin/accounts/${id}/journal`, { method: 'DELETE' })),
+    (id: string) => run(id, () => stepUpThenFetch(`/api/admin/accounts/${id}/journal`, 'DELETE')),
     [run],
   );
 
   const deleteAccount = useCallback(
-    (id: string) => run(id, () => fetch(`/api/admin/accounts/${id}`, { method: 'DELETE' })),
+    (id: string) => run(id, () => stepUpThenFetch(`/api/admin/accounts/${id}`, 'DELETE')),
     [run],
   );
 

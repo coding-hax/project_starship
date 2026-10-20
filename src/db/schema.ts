@@ -601,7 +601,7 @@ export const authChallenges = pgTable(
   {
     id: uuid('id').primaryKey(),
     challenge: text('challenge').notNull(),
-    kind: text('kind').$type<'registration' | 'authentication'>().notNull(),
+    kind: text('kind').$type<'registration' | 'authentication' | 'step-up'>().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     recoveryCodeId: uuid('recovery_code_id').references(() => recoveryCodes.id),

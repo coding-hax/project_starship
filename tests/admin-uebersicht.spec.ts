@@ -4,6 +4,7 @@ import {
   createOtherAccount,
   createThrowawaySession,
   currentAccountId,
+  nonAdminContext,
   registerPasskey,
   resetAppData,
   seedInvite,
@@ -20,20 +21,6 @@ test.beforeEach(async ({ page }) => {
   await resetAppData();
   await registerPasskey(page, null);
 });
-
-/** A second, independent browser context signed in as a `role: 'user'` account
- * — never the shared `AUTH_STATE` session, which is always the admin one. */
-async function nonAdminContext(
-  browser: Browser,
-  baseURL: string | undefined,
-): Promise<{ page: Page; close: () => Promise<void> }> {
-  const other = await createOtherAccount('Nutzerkonto');
-  const session = await createThrowawaySession(undefined, undefined, other.userId);
-  const context = await browser.newContext();
-  await context.addCookies([{ name: 'starship_session', value: session.token, url: baseURL }]);
-  const page = await context.newPage();
-  return { page, close: () => context.close() };
-}
 
 /** Same as `nonAdminContext`, but also hands back the account id (#1235) — the
  * sync-counter specs below need it to query their own account's row back out

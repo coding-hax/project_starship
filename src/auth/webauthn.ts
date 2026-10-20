@@ -17,7 +17,7 @@ export function relyingParty() {
 
 export async function storeChallenge(
   challenge: string,
-  kind: 'registration' | 'authentication',
+  kind: 'registration' | 'authentication' | 'step-up',
   binding: { recoveryCodeId?: string | null; inviteId?: string | null; userId?: string | null } = {},
 ): Promise<void> {
   await db.delete(authChallenges).where(lt(authChallenges.expiresAt, new Date()));
@@ -45,7 +45,7 @@ export async function storeChallenge(
  */
 export async function consumeChallenge(
   challenge: string,
-  kind: 'registration' | 'authentication',
+  kind: 'registration' | 'authentication' | 'step-up',
 ): Promise<{ ok: boolean; recoveryCodeId: string | null; inviteId: string | null; userId: string | null }> {
   const [row] = await db
     .delete(authChallenges)

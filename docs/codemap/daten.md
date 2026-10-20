@@ -19,7 +19,8 @@
 
 ## src/auth
 
-- `session.ts` / `auth-response.ts` / `device-cookie.ts` — Session-Token+requireUser()/requireAdmin(); 401/403/404; Geräte-Etikett
+- `session.ts` / `auth-response.ts` / `device-cookie.ts` — Session+requireUser/requireAdmin; 401/403/404; Geräte-Etikett
+- `admin-route.ts` / `step-up.ts` — guardAdmin(): 404+Origin; verifyStepUp(): frischer Passkey
 - `activity.ts` — last_seen_at/user_activity_days, 1×/h (requireUser)
 - `session-cookie.ts` — nur SESSION_COOKIE, von `middleware.ts` Edge-Runtime-ladbar
 - `webauthn.ts` / `rate-limit.ts` — Challenges/Credentials/Recovery; Fixed-Window, fail-open bei DB-Fehler
@@ -28,7 +29,7 @@
 ## src/crypto
 
 - `errors.ts` / `base64.ts` — Fehler ohne Klartext + Base64-Helfer
-- `envelope.ts` / `journal.ts` / `__fixtures__/journal-vector.json` — KEK-Hülle (AES-GCM); Ver-/Entschlüsselung, Recovery, Re-Export; Testvektor Formatdrift
+- `envelope.ts` / `journal.ts` / `__fixtures__/journal-vector.json` — KEK-Hülle (AES-GCM), Recovery; Testvektor Formatdrift
 
 ## src/modules
 
@@ -36,5 +37,5 @@
 
 ## src/push
 
-- `vapid.ts` / `send.ts` / `notification.ts` / `schedule.ts` — VAPID+Versand (löscht ungültige); Payload-Logik, DST-Slots
-- `reminders/{index,tasks-due,habits-open,interaction-limit,events-due,reminder-kinds}.ts` — Registry+Kind-Metadaten; Aufgaben/Routinen/Ablauf; 15-Min.-Vorlauf je Termin
+- `vapid.ts` / `send.ts` / `notification.ts` / `schedule.ts` — VAPID+Versand (löscht ungültige); Payload, DST-Slots
+- `reminders/{index,tasks-due,habits-open,interaction-limit,events-due,reminder-kinds}.ts` — Registry+Kinds; 15-Min.-Vorlauf
