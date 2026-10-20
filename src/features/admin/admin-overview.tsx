@@ -158,6 +158,26 @@ function AccountCard({ account, isOwn, actions, setAccountStatus }: AccountCardP
       <Row label="Erinnerungen (30 Tage)">
         <span>{account.push.reminders30} ausgelöst</span>
       </Row>
+      <Row label="Sync-Ablehnungen (30 T)">
+        <span>
+          {account.sync.rejections.malformed +
+            account.sync.rejections.missingRequired +
+            account.sync.rejections.constraint +
+            account.sync.rejections.quota}
+        </span>
+      </Row>
+      <Row label="Konflikte (30 T)">
+        <span>{account.sync.conflicts}</span>
+      </Row>
+      <Row label="Vollpulls (30 T)">
+        <span>{account.sync.fullPulls}</span>
+      </Row>
+      <Row label="Push-Störungen (30 T)">
+        <span>{account.sync.pushDropped + account.sync.pushFailed}</span>
+      </Row>
+      <Row label="Geräte mit anderem Stand">
+        <span>{account.staleDevices}</span>
+      </Row>
       <ul className="admin-overview__modules">
         {(Object.keys(MODULE_LABEL) as Array<keyof typeof MODULE_LABEL>).map((key) => (
           <li key={key} className="admin-overview__module">

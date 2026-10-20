@@ -25,6 +25,9 @@ vi.mock('@/db', () => ({
   },
 }));
 
+const recordSyncCounters = vi.fn().mockResolvedValue(undefined);
+vi.mock('@/db/sync-counters', () => ({ recordSyncCounters }));
+
 /** The account whose devices this suite sends to — `sendPushToUser` takes it since #1200. */
 const USER_ID = '00000000-0000-0000-0000-00000000a003';
 
@@ -32,6 +35,7 @@ describe('sendPushToUser', () => {
   beforeEach(() => {
     sendNotification.mockReset();
     deleteWhere.mockClear();
+    recordSyncCounters.mockClear();
   });
 
   it('deletes the subscription outright on a 410 from the push service', async () => {
@@ -42,6 +46,12 @@ describe('sendPushToUser', () => {
     await sendPushToUser(USER_ID, { title: 't', body: 'b', url: '/' });
 
     expect(deleteWhere).toHaveBeenCalledTimes(1);
+    // #1235 AK3: dropped subscriptions count against the account, not the
+    // (by now deleted) subscription.
+    expect(recordSyncCounters).toHaveBeenCalledWith(USER_ID, {
+      pushSubscriptionsDropped: 1,
+      pushDeliveryFailures: 0,
+    });
   });
 
   it('deletes the subscription outright on a 404 from the push service', async () => {
@@ -52,6 +62,10 @@ describe('sendPushToUser', () => {
     await sendPushToUser(USER_ID, { title: 't', body: 'b', url: '/' });
 
     expect(deleteWhere).toHaveBeenCalledTimes(1);
+    expect(recordSyncCounters).toHaveBeenCalledWith(USER_ID, {
+      pushSubscriptionsDropped: 1,
+      pushDeliveryFailures: 0,
+    });
   });
 
   it('keeps the subscription and never logs endpoint/keys on any other failure (AC5)', async () => {
@@ -69,6 +83,11 @@ describe('sendPushToUser', () => {
       subscriptionId: 'sub-1',
       statusCode: undefined,
     });
+    // #1235 AK3: a non-404/410 failure counts as a delivery failure, not a drop.
+    expect(recordSyncCounters).toHaveBeenCalledWith(USER_ID, {
+      pushSubscriptionsDropped: 0,
+      pushDeliveryFailures: 1,
+    });
     errorSpy.mockRestore();
   });
 
@@ -85,6 +104,13 @@ describe('sendPushToUser', () => {
 
     expect(sendNotification).toHaveBeenCalledTimes(2);
     expect(errorSpy).not.toHaveBeenCalled();
+    // #1235 AK5: a clean delivery writes nothing — `recordSyncCounters` itself
+    // is still called (it is the one that no-ops on an all-zero delta), so this
+    // only asserts the deltas are zero, not that the call never happens.
+    expect(recordSyncCounters).toHaveBeenCalledWith(USER_ID, {
+      pushSubscriptionsDropped: 0,
+      pushDeliveryFailures: 0,
+    });
     errorSpy.mockRestore();
   });
 });

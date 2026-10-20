@@ -1,10 +1,11 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { authErrorResponse } from '@/auth/auth-response';
-import { requireUser } from '@/auth/session';
+import { recordSessionVersion, requireUser } from '@/auth/session';
 import { db } from '@/db';
 import { isOverLimit } from '@/db/storage-quota';
 import { acquireSyncWriteLock } from '@/db/sync-lock';
+import { recordSyncCounters } from '@/db/sync-counters';
 import { missingRequired, SYNC_REGISTRY, writableFields } from '@/db/sync-tables';
 import { detectOverwrite, resolveDeletedAt } from '@/local/conflict';
 import {
@@ -54,6 +55,14 @@ export async function POST(request: Request) {
     throw error;
   }
 
+  // App-stand je Gerät (#1235 AK4) — never lets a broken recorder break the
+  // push it rides along with (AK6), same stance as every counter below.
+  try {
+    await recordSessionVersion(user.sessionId, user.appVersion, request.headers.get('x-app-version'));
+  } catch {
+    // fail-open (AK6)
+  }
+
   const body = await request.json().catch(() => null);
   if (!body || !Array.isArray(body.mutations)) {
     return NextResponse.json({ error: 'mutations must be an array' }, { status: 400 });
@@ -66,6 +75,11 @@ export async function POST(request: Request) {
   // Pull/read stays unaffected; this route is the only write path. Fail-open is
   // inside `isOverLimit` itself, same stance as the auth rate limiter.
   if (mutations.some((mutation) => mutation.op !== 'delete') && (await isOverLimit(user.userId))) {
+    try {
+      await recordSyncCounters(user.userId, { rejectedQuota: 1 });
+    } catch {
+      // fail-open (AK6)
+    }
     return NextResponse.json(
       { error: 'Dein Speicher ist voll. Lösche etwas, um wieder schreiben zu können.' },
       { status: 413 },
@@ -184,6 +198,20 @@ export async function POST(request: Request) {
       }
     }
   });
+
+  // One upsert for everything this call found (AK1, AK5 "kein zusätzlicher
+  // Query" — the tallies are already in memory from the loop above). Never lets
+  // a broken counter turn a successful push into a failed response (AK6).
+  try {
+    await recordSyncCounters(user.userId, {
+      rejectedMalformed: rejected.filter((r) => r.reason === 'malformed').length,
+      rejectedMissingRequired: rejected.filter((r) => r.reason === 'missing-required').length,
+      rejectedConstraint: rejected.filter((r) => r.reason === 'constraint').length,
+      conflicts: conflicts.length,
+    });
+  } catch {
+    // fail-open (AK6)
+  }
 
   const response: PushResponse = { applied, conflicts, rejected };
   return NextResponse.json(response);

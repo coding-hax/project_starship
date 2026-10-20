@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { authErrorResponse } from '@/auth/auth-response';
-import { requireUser } from '@/auth/session';
+import { recordSessionVersion, requireUser } from '@/auth/session';
 import { db } from '@/db';
+import { recordSyncCounters } from '@/db/sync-counters';
 import { pageChanges, PULL_PAGE_LIMIT } from '@/local/conflict';
 import type { PullResponse } from '@/local/types';
 import { readChangesSince } from './read-changes-since';
@@ -29,10 +30,25 @@ export async function GET(request: Request) {
     throw error;
   }
 
+  // App-stand je Gerät (#1235 AK4) — see the push route for the same call.
+  try {
+    await recordSessionVersion(user.sessionId, user.appVersion, request.headers.get('x-app-version'));
+  } catch {
+    // fail-open (AK6)
+  }
+
   const raw = new URL(request.url).searchParams.get('since');
   const since = raw === null ? 0 : Number.parseInt(raw, 10);
   if (!Number.isInteger(since)) {
     return NextResponse.json({ error: 'since must be an integer sequence number' }, { status: 400 });
+  }
+
+  if (since === 0) {
+    try {
+      await recordSyncCounters(user.userId, { fullPulls: 1 });
+    } catch {
+      // fail-open (AK6)
+    }
   }
 
   const { changes, truncated } = await db.transaction(
