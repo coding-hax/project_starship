@@ -147,6 +147,13 @@ test.describe('destruktiv (Wegwerf-Sitzung, frischer Context)', () => {
 
 test.describe('Gerät umbenennen (destruktiv, frischer Context)', () => {
   test('AK1: Umbenennen überlebt Reload und steht in Postgres', async ({ browser, baseURL }) => {
+    // `credentials` has no session scoping and `resetAppData()` deliberately
+    // leaves it alone (see `deleteAllCredentials()`'s own comment) — without
+    // this, a credential labeled "Alt" left behind by an earlier invocation of
+    // THIS SAME test (a CI retry, a `--repeat-each` run) piles up, and the
+    // `hasText: 'Alt'` locator below hits a strict-mode violation once two
+    // exist (confirmed: 5/5 local repeats red with 4-5 matching elements).
+    await deleteAllCredentials();
     const { context, page } = await freshSessionContext(browser, baseURL);
     const id = await createThrowawayCredential({ label: 'Alt' });
 
