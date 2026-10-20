@@ -83,7 +83,7 @@ async function abortWeather(page: Page): Promise<void> {
  *  (mirrors `fullRecoveryCeremony` in auth-recovery-register.spec.ts) — faster and
  *  more precise than clicking through the UI for the cases that assert on the
  *  HTTP response itself. */
-async function redeemInviteViaHttp(page: Page, token: string) {
+async function redeemInviteViaHttp(page: Page, token: string, extraVerifyData: Record<string, unknown> = {}) {
   const optionsRes = await page.request.post('/api/auth/register/options', {
     data: { inviteToken: token },
   });
@@ -93,7 +93,7 @@ async function redeemInviteViaHttp(page: Page, token: string) {
   const options = await optionsRes.json();
   const response = await createRegistrationCredential(page, options);
   const verifyRes = await page.request.post('/api/auth/register/verify', {
-    data: { response, challenge: options.challenge },
+    data: { response, challenge: options.challenge, ...extraVerifyData },
   });
   return { optionsRes, verifyRes, verifyBody: await verifyRes.json() };
 }
@@ -150,6 +150,25 @@ test('AK2: ein frischer Einladungs-Link legt ein eigenes leeres Konto an und lan
     client.query('SELECT count(*)::int AS count FROM tasks WHERE user_id = $1', [newUserId]),
   );
   expect(tasks.rows[0].count).toBe(0);
+});
+
+test("AK4 (#1224): role: 'admin' im Body von register/verify erzeugt trotzdem nur ein Konto mit role = 'user'", async ({
+  page,
+}) => {
+  const adminId = await seedAdmin();
+  const token = await seedInvite({ createdBy: adminId });
+  await enableVirtualAuthenticator(page);
+  await page.goto(`/einladung/${token}`);
+
+  const { verifyRes, verifyBody } = await redeemInviteViaHttp(page, token, { role: 'admin' });
+  expect(verifyRes?.ok()).toBe(true);
+  expect(verifyBody?.verified).toBe(true);
+
+  const newUser = await withDb((client) =>
+    client.query('SELECT role FROM users WHERE id <> $1', [adminId]),
+  );
+  expect(newUser.rows).toHaveLength(1);
+  expect(newUser.rows[0].role).toBe('user');
 });
 
 test('AK3: ein Einladungs-Token funktioniert genau einmal — der zweite Versuch legt kein zweites Konto an', async ({

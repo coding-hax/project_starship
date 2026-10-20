@@ -1,6 +1,15 @@
 import { expect, test } from '@playwright/test';
 import { ADMIN_NOT_FOUND_PATH } from '@/auth/admin-route';
-import { createOtherAccount, currentAccountId, nonAdminContext, registerPasskey, resetAppData, seedInvite } from './helpers';
+import {
+  createOtherAccount,
+  currentAccountId,
+  nonAdminContext,
+  registerPasskey,
+  resetAppData,
+  seedInvite,
+  setAccountBlocked,
+  withDb,
+} from './helpers';
 
 /**
  * S7 of #1199 (#1224) — Sicherheits-Härtung des Admin-Bereichs. E2E nur für
@@ -33,6 +42,47 @@ test.beforeEach(async ({ page }) => {
 function stripDevAssetVersion(html: string): string {
   return html.replace(/\?v=\d+/g, '?v=X').replace(/__next_r="[^"]*"/g, '__next_r="X"');
 }
+
+test('AK3: ein während der Sitzung herabgestuftes oder gesperrtes Admin-Konto scheitert an seiner nächsten Anfrage, ohne neuen Login', async ({
+  page,
+}) => {
+  const adminId = await currentAccountId();
+  try {
+    // Downgrade: die nächste Anfrage über dieselbe, nie erneuerte Sitzung muss
+    // den Admin-Bereich byte-gleich zu einer nicht existierenden Route sehen
+    // (AK5), nicht nur irgendeinen Fehler.
+    await withDb((client) => client.query("UPDATE users SET role = 'user' WHERE id = $1", [adminId]));
+    const downgraded = await page.request.get('/api/admin/accounts');
+    const unknown = await page.request.get(ADMIN_NOT_FOUND_PATH);
+    expect(downgraded.status()).toBe(unknown.status());
+    expect(await downgraded.text()).toBe(await unknown.text());
+
+    // Sperren statt herabstufen: `requireUser()` wirft `AccountBlockedError`
+    // (403) noch vor der Rollenprüfung — die Rolle bleibt hier absichtlich
+    // 'admin', damit der Test wirklich die Sperre prüft, nicht erneut AK5.
+    await withDb((client) => client.query("UPDATE users SET role = 'admin' WHERE id = $1", [adminId]));
+    await setAccountBlocked(adminId, true);
+    const blocked = await page.request.get('/api/admin/accounts');
+    expect(blocked.status()).toBe(403);
+  } finally {
+    // Der geteilte AUTH_STATE-Cookie gehört exakt diesem Konto — ohne
+    // Wiederherstellung bliebe jeder spätere Test in dieser Datei (und jeder
+    // Folge-Worker, der dieselbe Sitzung erbt) ohne gültigen Admin zurück.
+    await withDb((client) => client.query("UPDATE users SET role = 'admin' WHERE id = $1", [adminId]));
+    await setAccountBlocked(adminId, false);
+  }
+});
+
+test('AK7: ein Anzeigename mit eingebettetem Skript erscheint in /admin nur als Text, löst nichts aus', async ({
+  page,
+}) => {
+  const xssLabel = '<img src=x onerror="window.__xss=1">';
+  await createOtherAccount(xssLabel);
+
+  await page.goto('/admin');
+  await expect(page.getByText(xssLabel, { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
+});
 
 test('AK5 (API): /api/admin/accounts antwortet einem Nutzer-Konto byte-gleich zu einer nicht existierenden API-Route', async ({
   browser,
